@@ -1,0 +1,62 @@
+[
+  {
+    "query": "pasta with cherry tomatoes and basil",
+    "expected_image": "pasta-primavera.png",
+    "language": "en"
+  },
+  {
+    "query": "pasta con tomates cherry y albahaca",
+    "expected_image": "pasta-primavera.png",
+    "language": "es"
+  },
+  {
+    "query": "a margherita pizza with mozzarella and basil",
+    "expected_image": "margherita-pizza.png",
+    "language": "en"
+  },
+  {
+    "query": "pizza margarita con mozzarella y albahaca",
+    "expected_image": "margherita-pizza.png",
+    "language": "es"
+  },
+  {
+    "query": "fresh garden salad with cucumber and tomato",
+    "expected_image": "garden-salad.png",
+    "language": "en"
+  },
+  {
+    "query": "ensalada verde con pepino y tomate",
+    "expected_image": "garden-salad.png",
+    "language": "es"
+  },
+  {
+    "query": "sushi rolls with salmon and avocado",
+    "expected_image": "sushi-rolls.png",
+    "language": "en"
+  },
+  {
+    "query": "rollos de sushi con salmón y aguacate",
+    "expected_image": "sushi-rolls.png",
+    "language": "es"
+  },
+  {
+    "query": "cheeseburger with lettuce and tomato",
+    "expected_image": "cheeseburger.png",
+    "language": "en"
+  },
+  {
+    "query": "hamburguesa con queso, lechuga y tomate",
+    "expected_image": "cheeseburger.png",
+    "language": "es"
+  },
+  {
+    "query": "tomato soup with cream and basil",
+    "expected_image": "tomato-soup.png",
+    "language": "en"
+  },
+  {
+    "query": "sopa de tomate con crema y albahaca",
+    "expected_image": "tomato-soup.png",
+    "language": "es"
+  }
+]
