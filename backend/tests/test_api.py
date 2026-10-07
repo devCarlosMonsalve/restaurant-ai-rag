@@ -5,6 +5,7 @@ from app.schemas import (
     RagAnswerResponse,
     RagSource,
 )
+from app.models.osm_place import OsmPlace
 
 def test_health_returns_ok(client: TestClient) -> None:
     response = client.get("/health")
@@ -49,6 +50,39 @@ def test_create_restaurant_rejects_invalid_input(client: TestClient) -> None:
 
     assert response.status_code == 422
     assert client.get("/restaurants").json() == []
+
+
+def test_list_osm_places_includes_required_attribution(
+    client: TestClient,
+    db_session,
+) -> None:
+    db_session.add(
+        OsmPlace(
+            osm_type="node",
+            osm_id=123,
+            name="Example Restaurant",
+            city="Madrid",
+            cuisine="italian",
+            location="Calle Mayor 10",
+            latitude=40.4,
+            longitude=-3.7,
+            wikimedia_commons="Category:Example Restaurant",
+            source_url="https://www.openstreetmap.org/node/123",
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/restaurants/osm")
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == "Example Restaurant"
+    assert response.json()[0]["source_url"] == (
+        "https://www.openstreetmap.org/node/123"
+    )
+    assert response.json()[0]["attribution"] == "© OpenStreetMap contributors"
+    assert response.json()[0]["attribution_url"] == (
+        "https://www.openstreetmap.org/copyright"
+    )
 
 
 def test_document_search_returns_ranked_chunks(

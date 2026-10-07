@@ -12,8 +12,10 @@ from app.image_embeddings import (
     embed_image,
     embed_text_for_image_search,
 )
-from app.image_ingestion import ingest_image_to_database
+from app.image_ingestion import ImageSourceMetadata, ingest_image_to_database
 from app.models.image_embedding import ImageEmbedding
+from app.open_data_sources import OSMRestaurant
+from app.osm_ingestion import upsert_osm_place
 from app.schemas import ImageSearchResult
 
 
@@ -82,6 +84,54 @@ def test_ingestion_stores_image_embedding_and_updates_existing_path(
     assert len(stored_images[0].embedding) == IMAGE_EMBEDDING_DIMENSIONS
 
 
+def test_ingestion_persists_open_license_and_osm_provenance(
+    tmp_path: Path,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_path = tmp_path / "commons-photo.jpg"
+    image_path.write_bytes(b"mock image")
+    monkeypatch.setattr(
+        "app.image_ingestion.embed_image",
+        lambda path: [0.1] * IMAGE_EMBEDDING_DIMENSIONS,
+    )
+    place = upsert_osm_place(
+        OSMRestaurant(
+            osm_type="node",
+            osm_id=123,
+            name="Example Restaurant",
+            city="Madrid",
+            cuisine="italian",
+            location="Calle Mayor 10",
+            latitude=40.4,
+            longitude=-3.7,
+            wikimedia_commons="Category:Example Restaurant",
+        ),
+        db_session,
+    )
+
+    image_id = ingest_image_to_database(
+        image_path,
+        db_session,
+        metadata=ImageSourceMetadata(
+            source_url="https://commons.wikimedia.org/wiki/File:commons-photo.jpg",
+            license_name="CC BY 4.0",
+            license_url="https://creativecommons.org/licenses/by/4.0/",
+            attribution="Photo by Example",
+            osm_place_id=place.id,
+        ),
+    )
+    stored_image = db_session.get(ImageEmbedding, image_id)
+
+    assert stored_image is not None
+    assert stored_image.source_url == (
+        "https://commons.wikimedia.org/wiki/File:commons-photo.jpg"
+    )
+    assert stored_image.license_name == "CC BY 4.0"
+    assert stored_image.attribution == "Photo by Example"
+    assert stored_image.osm_place.name == "Example Restaurant"
+
+
 def test_image_search_endpoint_returns_matches(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -92,6 +142,16 @@ def test_image_search_endpoint_returns_matches(
             source_name="pasta.png",
             image_path="C:/images/pasta.png",
             similarity=0.93,
+            source_url="https://commons.wikimedia.org/wiki/File:Pasta.jpg",
+            license_name="CC BY 4.0",
+            license_url="https://creativecommons.org/licenses/by/4.0/",
+            attribution="Photo by Example",
+            restaurant_name="Example Restaurant",
+            restaurant_location="Madrid",
+            restaurant_cuisine="Italian",
+            restaurant_source_url="https://www.openstreetmap.org/node/123",
+            restaurant_attribution="© OpenStreetMap contributors",
+            restaurant_attribution_url="https://www.openstreetmap.org/copyright",
         )
     ]
     calls = {}
@@ -110,6 +170,15 @@ def test_image_search_endpoint_returns_matches(
     assert response.status_code == 200
     assert response.json()[0]["source_name"] == "pasta.png"
     assert response.json()[0]["similarity"] == 0.93
+    assert response.json()[0]["license_name"] == "CC BY 4.0"
+    assert response.json()[0]["attribution"] == "Photo by Example"
+    assert response.json()[0]["restaurant_name"] == "Example Restaurant"
+    assert response.json()[0]["restaurant_attribution"] == (
+        "© OpenStreetMap contributors"
+    )
+    assert response.json()[0]["restaurant_attribution_url"] == (
+        "https://www.openstreetmap.org/copyright"
+    )
     assert calls == {"query": "pasta fresca italiana", "top_k": 3}
 
 

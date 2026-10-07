@@ -17,7 +17,8 @@ IMAGES_DIR = Path(__file__).parent / "data" / "images"
 
 class ImageEvaluationCase(TypedDict):
     query: str
-    expected_image: str
+    expected_image: str | None
+    should_abstain: bool
     language: Literal["en", "es"]
 
 
@@ -27,6 +28,14 @@ def load_cases() -> list[ImageEvaluationCase]:
     )
     if not cases:
         raise ValueError("Image evaluation data must contain at least one case")
+    if any(
+        case["should_abstain"] != (case["expected_image"] is None)
+        for case in cases
+    ):
+        raise ValueError(
+            "Abstention cases must have no expected image; answerable cases "
+            "must specify one"
+        )
     return cases
 
 
@@ -56,7 +65,17 @@ def _print_metrics(
 
 def run_evaluation(top_k: int) -> None:
     cases = load_cases()
-    expected_images = {case["expected_image"] for case in cases}
+    answerable_cases = [
+        case for case in cases if not case["should_abstain"]
+    ]
+    if not answerable_cases:
+        raise ValueError("Image evaluation data must include answerable cases")
+
+    expected_images = {
+        case["expected_image"]
+        for case in answerable_cases
+        if case["expected_image"] is not None
+    }
     missing_files = sorted(
         image_name
         for image_name in expected_images
@@ -69,6 +88,8 @@ def run_evaluation(top_k: int) -> None:
         )
 
     evaluations: list[tuple[ImageEvaluationCase, list[str]]] = []
+    positive_top_scores: list[float] = []
+    negative_top_scores: list[float] = []
     with SessionLocal() as session:
         indexed_images = set(
             session.scalars(select(ImageEmbedding.source_name).distinct()).all()
@@ -84,16 +105,34 @@ def run_evaluation(top_k: int) -> None:
         for case in cases:
             matches = search_images_by_text(case["query"], session, top_k=top_k)
             retrieved_images = [match.source_name for match in matches]
+            top_similarity = matches[0].similarity if matches else None
+
+            if case["should_abstain"]:
+                if top_similarity is not None:
+                    negative_top_scores.append(top_similarity)
+                print(
+                    "ABSTENTION REVIEW | "
+                    f"top_similarity={top_similarity} | "
+                    f"retrieved={retrieved_images} | query={case['query']}"
+                )
+                continue
+
+            expected_image = case["expected_image"]
+            if expected_image is None:
+                raise ValueError("Answerable evaluation cases need an expected image")
             evaluations.append((case, retrieved_images))
+            if top_similarity is not None:
+                positive_top_scores.append(top_similarity)
 
             hit_at_1 = bool(retrieved_images) and (
-                retrieved_images[0] == case["expected_image"]
+                retrieved_images[0] == expected_image
             )
-            hit_at_k = case["expected_image"] in retrieved_images
+            hit_at_k = expected_image in retrieved_images
             print(
                 f"{'HIT' if hit_at_1 else 'MISS'}@1 | "
                 f"{'HIT' if hit_at_k else 'MISS'}@{top_k} | "
-                f"expected={case['expected_image']} | "
+                f"expected={expected_image} | "
+                f"top_similarity={top_similarity} | "
                 f"retrieved={retrieved_images} | query={case['query']}"
             )
 
@@ -106,6 +145,20 @@ def run_evaluation(top_k: int) -> None:
         ]
         if language_evaluations:
             _print_metrics(label, language_evaluations, top_k=top_k)
+
+    if positive_top_scores:
+        print(
+            "Positive top-similarity range: "
+            f"{min(positive_top_scores):.3f}-{max(positive_top_scores):.3f} "
+            f"(mean={sum(positive_top_scores) / len(positive_top_scores):.3f})"
+        )
+    if negative_top_scores:
+        print(
+            "Negative top-similarity range: "
+            f"{min(negative_top_scores):.3f}-{max(negative_top_scores):.3f} "
+            f"(mean={sum(negative_top_scores) / len(negative_top_scores):.3f})"
+        )
+        print("Negative cases are for threshold calibration; no threshold is applied.")
 
     if _hit_count(evaluations, cutoff=top_k) != len(evaluations):
         raise SystemExit(1)

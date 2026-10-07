@@ -24,6 +24,22 @@ class RestaurantRead(BaseModel):
     location: str
 
 
+class OsmPlaceRead(BaseModel):
+    id: UUID
+    osm_type: str
+    osm_id: int
+    name: str
+    city: str
+    cuisine: str | None
+    location: str | None
+    latitude: float | None
+    longitude: float | None
+    wikimedia_commons: str
+    source_url: str
+    attribution: str
+    attribution_url: str
+
+
 class DocumentSearchRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -51,6 +67,16 @@ class ImageSearchResult(BaseModel):
     source_name: str
     image_path: str
     similarity: float
+    source_url: str | None = None
+    license_name: str | None = None
+    license_url: str | None = None
+    attribution: str | None = None
+    restaurant_name: str | None = None
+    restaurant_location: str | None = None
+    restaurant_cuisine: str | None = None
+    restaurant_source_url: str | None = None
+    restaurant_attribution: str | None = None
+    restaurant_attribution_url: str | None = None
 
 
 class RagQuestionRequest(BaseModel):

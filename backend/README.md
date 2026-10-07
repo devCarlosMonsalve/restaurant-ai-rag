@@ -35,13 +35,37 @@ not image file contents.
 
 ## Evaluate image search
 
-The sample image set has 12 labeled queries in English and Spanish. After
-indexing the images, run the evaluator from this directory:
+The sample image set has 12 answerable queries and 12 out-of-corpus queries,
+balanced between English and Spanish. The negative cases include visually
+similar dishes and unrelated objects. After indexing the images, run the
+evaluator from this directory:
 
 ```powershell
 .\.venv\Scripts\python.exe evaluate_image_search.py --top-k 3
 ```
 
 It reports Hit@1 and Hit@3 (or the selected `--top-k`) overall and per language.
-The command exits with an error if any expected image is missing from the
-database or fails to appear within the selected top-k results.
+It also prints positive and negative top-similarity ranges to help calibrate a
+future rejection threshold; negative results are not filtered yet. The command
+exits with an error if any expected image is missing from the database or fails
+to appear within the selected top-k results.
+
+## Import Madrid places and Commons photos
+
+The pilot uses Madrid restaurant entries that explicitly link to a Wikimedia
+Commons `Category:` or `File:` in OpenStreetMap. It downloads only JPEG, PNG, or
+WebP images with CC0, public-domain, or CC BY 1.0–4.0 licenses; other licenses
+are skipped. File-page URL, license, author attribution, and the OSM place
+reference are stored alongside each embedding.
+
+Apply the latest migration and run the limited import:
+
+```powershell
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe ingest_madrid_commons_images.py --limit 5 --photos-per-place 2
+```
+
+The API exposes imported places at `GET /restaurants/osm`. Image search results
+include Commons photo attribution and license links, plus OSM place attribution.
+Display those attributions when showing the images. OSM data is available under
+the ODbL; see [OpenStreetMap copyright](https://www.openstreetmap.org/copyright).

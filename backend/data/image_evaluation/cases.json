@@ -2,61 +2,145 @@
   {
     "query": "pasta with cherry tomatoes and basil",
     "expected_image": "pasta-primavera.png",
+    "should_abstain": false,
     "language": "en"
   },
   {
     "query": "pasta con tomates cherry y albahaca",
     "expected_image": "pasta-primavera.png",
+    "should_abstain": false,
     "language": "es"
   },
   {
     "query": "a margherita pizza with mozzarella and basil",
     "expected_image": "margherita-pizza.png",
+    "should_abstain": false,
     "language": "en"
   },
   {
     "query": "pizza margarita con mozzarella y albahaca",
     "expected_image": "margherita-pizza.png",
+    "should_abstain": false,
     "language": "es"
   },
   {
     "query": "fresh garden salad with cucumber and tomato",
     "expected_image": "garden-salad.png",
+    "should_abstain": false,
     "language": "en"
   },
   {
     "query": "ensalada verde con pepino y tomate",
     "expected_image": "garden-salad.png",
+    "should_abstain": false,
     "language": "es"
   },
   {
     "query": "sushi rolls with salmon and avocado",
     "expected_image": "sushi-rolls.png",
+    "should_abstain": false,
     "language": "en"
   },
   {
     "query": "rollos de sushi con salmón y aguacate",
     "expected_image": "sushi-rolls.png",
+    "should_abstain": false,
     "language": "es"
   },
   {
     "query": "cheeseburger with lettuce and tomato",
     "expected_image": "cheeseburger.png",
+    "should_abstain": false,
     "language": "en"
   },
   {
     "query": "hamburguesa con queso, lechuga y tomate",
     "expected_image": "cheeseburger.png",
+    "should_abstain": false,
     "language": "es"
   },
   {
     "query": "tomato soup with cream and basil",
     "expected_image": "tomato-soup.png",
+    "should_abstain": false,
     "language": "en"
   },
   {
     "query": "sopa de tomate con crema y albahaca",
     "expected_image": "tomato-soup.png",
+    "should_abstain": false,
+    "language": "es"
+  },
+  {
+    "query": "a bowl of ramen noodles with pork and egg",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "en"
+  },
+  {
+    "query": "filete de ternera con patatas asadas",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "es"
+  },
+  {
+    "query": "a sailboat on the ocean",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "en"
+  },
+  {
+    "query": "un ramo de flores en un jarrón",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "es"
+  },
+  {
+    "query": "grilled salmon with lemon and asparagus",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "en"
+  },
+  {
+    "query": "paella de mariscos con gambas y mejillones",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "es"
+  },
+  {
+    "query": "chicken curry served with rice",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "en"
+  },
+  {
+    "query": "lasaña de carne con queso gratinado",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "es"
+  },
+  {
+    "query": "chocolate cake topped with strawberries",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "en"
+  },
+  {
+    "query": "tarta de chocolate con fresas",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "es"
+  },
+  {
+    "query": "fried chicken with french fries",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "en"
+  },
+  {
+    "query": "pollo asado con arroz y verduras",
+    "expected_image": null,
+    "should_abstain": true,
     "language": "es"
   }
 ]
