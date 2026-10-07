@@ -1,4 +1,7 @@
-from fastapi import Depends, FastAPI, status
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,6 +24,10 @@ from app.schemas import (
 from app.rag import answer_with_rag
 
 app = FastAPI(title="Restaurant AI API")
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+STATIC_DIR = BACKEND_DIR / "static"
+COMMONS_IMAGES_DIR = BACKEND_DIR / "data" / "images" / "commons"
 
 OSM_ATTRIBUTION = "© OpenStreetMap contributors"
 OSM_ATTRIBUTION_URL = "https://www.openstreetmap.org/copyright"
@@ -109,4 +116,22 @@ def search_images(
     request: ImageSearchRequest,
     db: Session = Depends(get_db),
 ) -> list[ImageSearchResult]:
-    return search_images_by_text(request.query, db, top_k=request.top_k)
+    return search_images_by_text(
+        request.query,
+        db,
+        top_k=request.top_k,
+        osm_places_only=request.osm_places_only,
+    )
+
+
+@app.get("/", include_in_schema=False)
+def home() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/images/files/{filename}", include_in_schema=False)
+def get_commons_image(filename: str) -> FileResponse:
+    image_path = (COMMONS_IMAGES_DIR / filename).resolve()
+    if image_path.parent != COMMONS_IMAGES_DIR.resolve() or not image_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return FileResponse(image_path)

@@ -2,6 +2,10 @@
 
 ## Text-to-image search with OpenCLIP
 
+Start the API from this directory, then open `http://127.0.0.1:8000` in a
+browser to search imported Madrid restaurant photos and view their license and
+attribution. The page uses the same `/images/search` endpoint as the API.
+
 From the `backend` directory, apply database migrations and index either one
 image or a directory of `.jpg`, `.jpeg`, `.png`, and `.webp` files:
 
@@ -32,6 +36,9 @@ The response contains matching filenames, local file paths, and cosine
 similarities. CLIP image and text vectors share a 512-dimensional space and are
 stored in the PostgreSQL `image_embeddings` table. This endpoint returns paths,
 not image file contents.
+The optional `osm_places_only` request field filters results to real places
+imported from OpenStreetMap; it defaults to `false` so the sample image
+evaluation remains unchanged.
 
 ## Evaluate image search
 

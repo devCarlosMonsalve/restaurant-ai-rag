@@ -7,6 +7,33 @@ from app.schemas import (
 )
 from app.models.osm_place import OsmPlace
 
+
+def test_home_serves_restaurant_search_page(client: TestClient) -> None:
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Saborea Madrid" in response.text
+    assert 'id="search-form"' in response.text
+
+
+def test_commons_image_route_serves_only_files_from_image_directory(
+    client: TestClient,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    image_path = tmp_path / "commons-photo.jpg"
+    image_path.write_bytes(b"test image")
+    monkeypatch.setattr("app.main.COMMONS_IMAGES_DIR", tmp_path)
+
+    response = client.get("/images/files/commons-photo.jpg")
+    missing_response = client.get("/images/files/missing.jpg")
+
+    assert response.status_code == 200
+    assert response.content == b"test image"
+    assert response.headers["content-type"] == "image/jpeg"
+    assert missing_response.status_code == 404
+
+
 def test_health_returns_ok(client: TestClient) -> None:
     response = client.get("/health")
 

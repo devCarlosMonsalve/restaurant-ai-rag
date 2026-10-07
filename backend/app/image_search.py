@@ -12,6 +12,7 @@ def search_images_by_text(
     session: Session,
     *,
     top_k: int = 5,
+    osm_places_only: bool = False,
 ) -> list[ImageSearchResult]:
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
@@ -24,6 +25,8 @@ def search_images_by_text(
         .order_by(cosine_distance)
         .limit(top_k)
     )
+    if osm_places_only:
+        statement = statement.where(OsmPlace.id.is_not(None))
     matches = session.execute(statement).all()
 
     return [

@@ -156,15 +156,26 @@ def test_image_search_endpoint_returns_matches(
     ]
     calls = {}
 
-    def fake_search(query: str, session: Session, *, top_k: int):
+    def fake_search(
+        query: str,
+        session: Session,
+        *,
+        top_k: int,
+        osm_places_only: bool = False,
+    ):
         calls["query"] = query
         calls["top_k"] = top_k
+        calls["osm_places_only"] = osm_places_only
         return expected_results
 
     monkeypatch.setattr("app.main.search_images_by_text", fake_search)
     response = client.post(
         "/images/search",
-        json={"query": "pasta fresca italiana", "top_k": 3},
+        json={
+            "query": "pasta fresca italiana",
+            "top_k": 3,
+            "osm_places_only": True,
+        },
     )
 
     assert response.status_code == 200
@@ -179,7 +190,11 @@ def test_image_search_endpoint_returns_matches(
     assert response.json()[0]["restaurant_attribution_url"] == (
         "https://www.openstreetmap.org/copyright"
     )
-    assert calls == {"query": "pasta fresca italiana", "top_k": 3}
+    assert calls == {
+        "query": "pasta fresca italiana",
+        "top_k": 3,
+        "osm_places_only": True,
+    }
 
 
 def test_image_search_endpoint_validates_query_and_top_k(
