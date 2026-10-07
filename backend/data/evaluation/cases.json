@@ -1,0 +1,57 @@
+[
+  {
+    "query": "¿Qué ingredientes llevan los tacos al pastor de Casa Luna?",
+    "expected_source": "eval_casa_luna.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿Qué opción de Sakura Bento no lleva pescado?",
+    "expected_source": "eval_sakura_bento.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿Qué ingredientes tiene el bowl de Verde Mesa?",
+    "expected_source": "eval_verde_mesa.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿Qué salsa acompaña al magret de pato de Bistró Niebla?",
+    "expected_source": "eval_bistro_niebla.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿Qué salsa llevan las enchiladas de Nopal y Maíz?",
+    "expected_source": "eval_nopal_maiz.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿Qué marisco lleva el arroz marinero de Marea Azul?",
+    "expected_source": "eval_marea_azul.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿Con qué se sirven las tortitas de Oat & Orchard?",
+    "expected_source": "eval_oat_orchard.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿En qué horno se cocina el paneer tikka de Tandoor Ruta?",
+    "expected_source": "eval_tandoor_ruta.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿Qué caldo lleva el ramen shoyu de Kumo Ramen?",
+    "expected_source": "eval_kumo_ramen.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿Qué ingrediente aromatiza la tarta de almendra de Café Luciérnaga?",
+    "expected_source": "eval_cafe_luciernaga.txt",
+    "should_abstain": false
+  },
+  {
+    "query": "¿Cuál es el teléfono de Casa Luna?",
+    "expected_source": null,
+    "should_abstain": true
+  }
+]
