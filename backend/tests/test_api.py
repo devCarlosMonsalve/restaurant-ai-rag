@@ -6,7 +6,6 @@ from app.schemas import (
     RagSource,
 )
 
-
 def test_health_returns_ok(client: TestClient) -> None:
     response = client.get("/health")
 
