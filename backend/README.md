@@ -171,3 +171,41 @@ benchmark cases, run:
 This prints the top results with their OSM cuisine and feature attributes plus
 their evidence status for manual acceptance review; it does not calculate
 ranking metrics for this set.
+
+## Retrieval baseline — FROZEN
+
+As of 2026-10-08, the Madrid restaurant retrieval baseline contains 4,838 OSM
+restaurants with 768-dimensional Gemini `gemini-embedding-2` embeddings.
+Semantic restaurant search compares query and restaurant vectors by cosine
+distance, applies optional exact city/cuisine filters, and returns only
+restaurants without indexed photos. Requests for supported characteristics
+add OSM evidence filters; unsupported atmosphere requests remain suggestions
+and are marked unverified.
+
+Image retrieval uses OpenCLIP `ViT-B-32` with pretrained weights
+`laion2b_s34b_b79k`. Image and text vectors are normalized to 512 dimensions
+and ranked in the shared CLIP space. For OSM photo searches, exact token matches
+in place and image metadata are used as a ranking tie-break ahead of CLIP
+cosine distance. City, cuisine, and supported feature evidence filters are
+applied to OSM-linked photos. Image CLIP similarity and restaurant semantic
+similarity are independent scores, not confidence values.
+
+The frozen curated restaurant benchmark baseline is:
+
+| Metric | Baseline |
+| --- | ---: |
+| Hit@1 | 15/15 |
+| Hit@3 | 15/15 |
+| MRR@5 | 1.000 |
+| Precision@3 | 93% |
+
+This is a small, curated benchmark and is not a general performance guarantee.
+Its manual holdout judgments are separate and are not included as automatic
+ranking metrics. The baseline test suite had 66 passing tests; this frozen
+implementation also includes regression coverage for OSM-tagged live music.
+
+This phase is **FROZEN**: do not change embedding models, CLIP models,
+preprocessing, corpus, or ranking to pursue marginal benchmark gains. Only
+verified correctness fixes that preserve the stated baseline are in scope.
+Potential retrieval optimizations belong in a future phase and must be
+evaluated separately; they are not part of this baseline.

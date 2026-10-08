@@ -310,6 +310,41 @@ def test_osm_image_search_rejects_stale_kosher_evidence(
     ]
 
 
+def test_osm_image_search_requires_live_music_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidates = [
+        _image_search_candidate(
+            "Live Music Restaurant",
+            ["Música en vivo: disponible"],
+        ),
+        _image_search_candidate("Unverified Restaurant", []),
+    ]
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, statement):
+            self.calls += 1
+            return [] if self.calls == 1 else candidates
+
+    monkeypatch.setattr(
+        "app.image_search.embed_text_for_image_search",
+        lambda _: [0.0] * 512,
+    )
+
+    results = search_images_by_text(
+        "restaurante con música en vivo",
+        FakeSession(),
+        osm_places_only=True,
+    )
+
+    assert [result.restaurant_name for result in results] == [
+        "Live Music Restaurant"
+    ]
+
+
 def test_metadata_search_matches_accents_and_important_spanish_terms() -> None:
     query_tokens = _tokens("Cocido madrileño en La Bola")
 

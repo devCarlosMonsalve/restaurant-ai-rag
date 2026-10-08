@@ -66,6 +66,10 @@ _FEATURE_INTENTS = (
         ),
     ),
     ("Aire acondicionado", ("aire acondicionado", "climatizado", "climatizada")),
+    (
+        "Música en vivo",
+        ("música en vivo", "música en directo", "live music"),
+    ),
     ("Acceso a internet", ("wifi", "wi fi", "internet")),
     (
         "Comida para llevar",

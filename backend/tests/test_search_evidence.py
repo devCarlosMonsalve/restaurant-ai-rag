@@ -34,6 +34,21 @@ def test_search_evidence_detects_outdoor_and_celiac_synonyms() -> None:
     ]
 
 
+def test_live_music_search_requires_osm_feature_evidence() -> None:
+    evidence = detect_search_evidence("un restaurante con música en vivo")
+    english_evidence = detect_search_evidence("restaurant with live music")
+
+    assert [requirement.label for requirement in evidence.feature_requirements] == [
+        "Música en vivo"
+    ]
+    assert english_evidence.feature_requirements == evidence.feature_requirements
+    assert matches_feature_requirements(
+        ["Música en vivo: disponible"],
+        evidence.feature_requirements,
+    )
+    assert not matches_feature_requirements([], evidence.feature_requirements)
+
+
 def test_feature_match_requires_all_requested_tags() -> None:
     evidence = detect_search_evidence("terraza y opciones veganas")
 
@@ -274,6 +289,28 @@ def test_step_free_access_is_confirmed_with_osm_wheelchair_yes(
     assert [result.name for result in response.results] == ["Restaurant"]
     assert response.evidence_status == "verified"
     assert "wheelchair=yes" in response.evidence_message
+
+
+def test_live_music_search_only_returns_tagged_places(monkeypatch) -> None:
+    untagged_place = _place("Unverified", [])
+    tagged_place = _place("Live Music", ["Música en vivo: disponible"])
+
+    class FakeSession:
+        def execute(self, statement):
+            return [(untagged_place, 0.01), (tagged_place, 0.2)]
+
+    monkeypatch.setattr(
+        "app.restaurant_search.embed_search_query",
+        lambda _: [0.0] * 768,
+    )
+
+    response = search_osm_places_by_text(
+        "un restaurante con música en vivo",
+        FakeSession(),
+    )
+
+    assert [result.name for result in response.results] == ["Live Music"]
+    assert response.evidence_status == "verified"
 
 
 def _place(name: str, features: list[str]):
