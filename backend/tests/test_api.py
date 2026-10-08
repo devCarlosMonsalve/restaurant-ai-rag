@@ -1,5 +1,8 @@
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from app.agents.schemas import RestaurantSearchAgentResponse
+from app.agents.restaurant_search_agent import RestaurantSearchAgentError
 from app.schemas import (
     DocumentSearchResult,
     OsmRestaurantSearchResult,
@@ -260,3 +263,55 @@ def test_ask_documents_returns_answer_and_sources(
     assert response.json()["answer"] == expected_response.answer
     assert response.json()["sources"][0]["source_name"] == "menu.txt"
     assert calls == {"query": "¿Cómo se prepara la pasta?", "top_k": 3}
+
+
+def test_restaurant_search_agent_endpoint_injects_database_session(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    calls = {}
+
+    def fake_agent(query: str, session: Session) -> RestaurantSearchAgentResponse:
+        calls["query"] = query
+        calls["session"] = session
+        return RestaurantSearchAgentResponse(answer="He encontrado candidatos.")
+
+    monkeypatch.setattr("app.main.run_restaurant_search_agent", fake_agent)
+
+    response = client.post(
+        "/agents/restaurant-search",
+        json={"query": "Busca restaurantes en Madrid"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"answer": "He encontrado candidatos."}
+    assert calls["query"] == "Busca restaurantes en Madrid"
+    assert isinstance(calls["session"], Session)
+
+
+def test_restaurant_search_agent_endpoint_validates_query(
+    client: TestClient,
+) -> None:
+    response = client.post("/agents/restaurant-search", json={"query": "  "})
+
+    assert response.status_code == 422
+
+
+def test_restaurant_search_agent_endpoint_surfaces_model_failure(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    def failing_agent(query: str, session: Session) -> RestaurantSearchAgentResponse:
+        raise RestaurantSearchAgentError("Gemini unavailable")
+
+    monkeypatch.setattr("app.main.run_restaurant_search_agent", failing_agent)
+
+    response = client.post(
+        "/agents/restaurant-search",
+        json={"query": "Busca restaurantes"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == (
+        "The restaurant search Agent could not complete the request."
+    )

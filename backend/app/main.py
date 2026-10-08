@@ -5,6 +5,14 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agents.restaurant_search_agent import (
+    RestaurantSearchAgentError,
+    run_restaurant_search_agent,
+)
+from app.agents.schemas import (
+    RestaurantSearchAgentRequest,
+    RestaurantSearchAgentResponse,
+)
 from app.application.knowledge import (
     answer_from_documents as answer_documents_use_case,
     search_documents as search_documents_use_case,
@@ -133,6 +141,24 @@ def ask_documents(
     db: Session = Depends(get_db),
 ) -> RagAnswerResponse:
     return answer_documents_use_case(request, db)
+
+
+@app.post(
+    "/agents/restaurant-search",
+    response_model=RestaurantSearchAgentResponse,
+    tags=["agents"],
+)
+def restaurant_search_agent(
+    request: RestaurantSearchAgentRequest,
+    db: Session = Depends(get_db),
+) -> RestaurantSearchAgentResponse:
+    try:
+        return run_restaurant_search_agent(request.query, db)
+    except RestaurantSearchAgentError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The restaurant search Agent could not complete the request.",
+        ) from error
 
 
 @app.post(

@@ -145,8 +145,9 @@ answers. Each use case accepts an existing request schema and database session,
 then delegates to the frozen service without changing its algorithm or result.
 
 The `app.tools` package exposes these use cases through thin Tool boundaries.
-Their docstrings are the human- and future-LLM-facing descriptions; the
-functions are not yet registered with an Agent or tool-calling framework.
+Their docstrings are the human- and LLM-facing descriptions. The explicit
+registry in `app.tools.registry` publishes their input schemas and dispatches
+validated calls to the existing functions.
 
 | Tool | Use when | Inputs | Returns | Does not guarantee |
 | --- | --- | --- | --- | --- |
@@ -179,7 +180,24 @@ add empty domain/infrastructure packages, repositories, or interfaces.
 This is a modular-monolith boundary, not a full dependency-inverted DDD
 reorganization. It leaves the current session-based frozen services in place
 until there is a concrete need to separate their persistence dependencies.
-It does not introduce an agent, LangGraph, or MCP integration.
+
+## Restaurant search Agent
+
+`POST /agents/restaurant-search` runs the first Agent using the existing
+`gemini-3.8-flash` model and the `google-genai` SDK. It manually registers the
+four Tools through `app.tools.registry`, validates every function-call
+argument against the existing request schemas, and executes calls sequentially.
+The database session is injected by the API host and is never included in a
+function declaration or sent as a model argument. Photo results omit local
+`image_path` values before returning to the model.
+
+The Agent permits at most four Tool call attempts per request, including
+invalid or failed calls. Automatic SDK function execution is disabled. Tool
+errors are returned to the model as explicit error results; Gemini/API failures
+produce an HTTP 502 response instead of a fabricated answer. The Agent returns
+an answer only; it does not add a new retrieval or ranking path, personalized
+preferences, workflows, or persistent conversation state. It does not
+introduce LangGraph or MCP.
 
 Evaluate the semantic restaurant ranking against known Madrid cuisines,
 features, and one dish-name case. Environment queries are reported for manual
