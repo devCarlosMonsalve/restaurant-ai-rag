@@ -1,15 +1,17 @@
 from urllib.parse import parse_qs, urlparse
+from urllib.error import HTTPError
 
 import pytest
 
 from app.open_data_sources import (
     fetch_commons_photos,
+    fetch_madrid_restaurants,
     parse_commons_photos,
     parse_madrid_restaurants,
 )
 
 
-def test_parse_madrid_restaurants_keeps_only_places_with_commons_links() -> None:
+def test_parse_madrid_restaurants_includes_places_without_commons_links() -> None:
     restaurants = parse_madrid_restaurants(
         {
             "elements": [
@@ -23,6 +25,9 @@ def test_parse_madrid_restaurants_keeps_only_places_with_commons_links() -> None
                         "name": "Restaurante Uno",
                         "cuisine": "italian",
                         "wikimedia_commons": "Category:Restaurante Uno",
+                        "outdoor_seating": "yes",
+                        "diet:vegetarian": "yes",
+                        "wheelchair": "limited",
                         "addr:street": "Calle Mayor",
                         "addr:housenumber": "10",
                         "addr:postcode": "28013",
@@ -39,7 +44,7 @@ def test_parse_madrid_restaurants_keeps_only_places_with_commons_links() -> None
         limit=10,
     )
 
-    assert len(restaurants) == 1
+    assert len(restaurants) == 2
     restaurant = restaurants[0]
     assert restaurant.name == "Restaurante Uno"
     assert restaurant.city == "Madrid"
@@ -47,6 +52,14 @@ def test_parse_madrid_restaurants_keeps_only_places_with_commons_links() -> None
     assert restaurant.location == "Calle Mayor 10, 28013"
     assert restaurant.source_url == "https://www.openstreetmap.org/node/12"
     assert restaurant.wikimedia_commons == "Category:Restaurante Uno"
+    assert restaurant.features == (
+        "Mesas al aire libre: disponible",
+        "Opciones vegetarianas: disponible",
+        "Acceso en silla de ruedas: accesibilidad limitada",
+    )
+    assert restaurants[1].name == "Sin fotos"
+    assert restaurants[1].wikimedia_commons is None
+    assert restaurants[1].features == ()
 
 
 def test_parse_commons_photos_filters_unsupported_licenses() -> None:
@@ -119,3 +132,39 @@ def test_commons_category_reference_is_sent_to_category_api(
 def test_commons_photo_lookup_rejects_unverified_references() -> None:
     with pytest.raises(ValueError, match="Category: or File:"):
         fetch_commons_photos("Café Comercial")
+
+
+def test_madrid_restaurant_fetch_includes_places_without_commons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_data = {}
+
+    def fake_request_json(url: str, *, data: bytes | None = None) -> dict:
+        request_data["query"] = parse_qs(data.decode("utf-8"))["data"][0]
+        return {"elements": []}
+
+    monkeypatch.setattr("app.open_data_sources._request_json", fake_request_json)
+
+    assert fetch_madrid_restaurants() == []
+    assert 'nwr["amenity"="restaurant"](area.city);' in request_data["query"]
+    assert '"wikimedia_commons"' not in request_data["query"]
+    assert "out center;" in request_data["query"]
+
+
+def test_madrid_restaurant_fetch_retries_transient_overpass_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+
+    def flaky_request_json(url: str, *, data: bytes | None = None) -> dict:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise HTTPError(url, 504, "Gateway Timeout", None, None)
+        return {"elements": []}
+
+    monkeypatch.setattr("app.open_data_sources._request_json", flaky_request_json)
+    monkeypatch.setattr("app.open_data_sources.time.sleep", lambda _: None)
+
+    assert fetch_madrid_restaurants() == []
+    assert attempts == 2

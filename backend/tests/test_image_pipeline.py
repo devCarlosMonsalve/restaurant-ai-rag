@@ -150,6 +150,7 @@ def test_image_search_endpoint_returns_matches(
             restaurant_name="Example Restaurant",
             restaurant_location="Madrid",
             restaurant_cuisine="Italian",
+            restaurant_features=["Mesas al aire libre: disponible"],
             restaurant_source_url="https://www.openstreetmap.org/node/123",
             restaurant_attribution="© OpenStreetMap contributors",
             restaurant_attribution_url="https://www.openstreetmap.org/copyright",
@@ -164,10 +165,14 @@ def test_image_search_endpoint_returns_matches(
         *,
         top_k: int,
         osm_places_only: bool = False,
+        city: str | None = None,
+        cuisine: str | None = None,
     ):
         calls["query"] = query
         calls["top_k"] = top_k
         calls["osm_places_only"] = osm_places_only
+        calls["city"] = city
+        calls["cuisine"] = cuisine
         return expected_results
 
     monkeypatch.setattr("app.main.search_images_by_text", fake_search)
@@ -177,6 +182,8 @@ def test_image_search_endpoint_returns_matches(
             "query": "pasta fresca italiana",
             "top_k": 3,
             "osm_places_only": True,
+            "city": "Madrid",
+            "cuisine": "tapas",
         },
     )
 
@@ -186,6 +193,9 @@ def test_image_search_endpoint_returns_matches(
     assert response.json()[0]["license_name"] == "CC BY 4.0"
     assert response.json()[0]["attribution"] == "Photo by Example"
     assert response.json()[0]["restaurant_name"] == "Example Restaurant"
+    assert response.json()[0]["restaurant_features"] == [
+        "Mesas al aire libre: disponible"
+    ]
     assert response.json()[0]["restaurant_attribution"] == (
         "© OpenStreetMap contributors"
     )
@@ -197,6 +207,8 @@ def test_image_search_endpoint_returns_matches(
         "query": "pasta fresca italiana",
         "top_k": 3,
         "osm_places_only": True,
+        "city": "Madrid",
+        "cuisine": "tapas",
     }
 
 
@@ -224,6 +236,16 @@ def test_image_search_endpoint_validates_query_and_top_k(
         "/images/search",
         json={"query": "pasta", "top_k": 21},
     )
+    excessive_city_response = client.post(
+        "/images/search",
+        json={"query": "pasta", "city": "M" * 101},
+    )
+    excessive_cuisine_response = client.post(
+        "/images/search",
+        json={"query": "pasta", "cuisine": "c" * 101},
+    )
 
     assert empty_query_response.status_code == 422
     assert excessive_top_k_response.status_code == 422
+    assert excessive_city_response.status_code == 422
+    assert excessive_cuisine_response.status_code == 422

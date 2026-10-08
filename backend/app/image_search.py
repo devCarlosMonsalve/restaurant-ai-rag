@@ -2,12 +2,13 @@ import re
 import unicodedata
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.image_embeddings import embed_text_for_image_search
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
+from app.place_filters import cuisine_filter
 from app.schemas import ImageSearchResult
 
 _STOPWORDS = {
@@ -97,11 +98,15 @@ def search_images_by_text(
     top_k: int = 5,
     osm_places_only: bool = False,
     sample_images_only: bool = False,
+    city: str | None = None,
+    cuisine: str | None = None,
 ) -> list[ImageSearchResult]:
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
     if osm_places_only and sample_images_only:
         raise ValueError("Only one image corpus can be selected")
+    if sample_images_only and (city is not None or cuisine is not None):
+        raise ValueError("Place filters cannot be used with the sample image corpus")
 
     query_embedding = embed_text_for_image_search(query)
     query_tokens = _tokens(query)
@@ -113,6 +118,7 @@ def search_images_by_text(
             OsmPlace.name,
             OsmPlace.cuisine,
             OsmPlace.wikimedia_commons,
+            OsmPlace.features,
         )
         .outerjoin(OsmPlace, ImageEmbedding.osm_place_id == OsmPlace.id)
     )
@@ -130,18 +136,22 @@ def search_images_by_text(
             OsmPlace.id.is_(None),
             ImageEmbedding.source_url.is_(None),
         )
-        image_statement = image_statement.where(
-            OsmPlace.id.is_(None),
-            ImageEmbedding.source_url.is_(None),
-        )
+    if city:
+        city_match = func.lower(OsmPlace.city) == city.strip().lower()
+        metadata_statement = metadata_statement.where(city_match)
+        image_statement = image_statement.where(city_match)
+    if cuisine:
+        cuisine_match = cuisine_filter(cuisine)
+        metadata_statement = metadata_statement.where(cuisine_match)
+        image_statement = image_statement.where(cuisine_match)
 
     metadata_matches: dict[UUID, tuple[int, int]] = {}
     if query_tokens:
-        for image_id, source_name, name, cuisine, commons_reference in session.execute(
+        for image_id, source_name, name, cuisine, commons_reference, features in session.execute(
             metadata_statement
         ):
             place_tokens: set[str] = set()
-            for value in (name, cuisine, commons_reference):
+            for value in (name, cuisine, commons_reference, " ".join(features or [])):
                 place_tokens.update(_tokens(value))
             image_tokens = _tokens(source_name) - place_tokens
             match_counts = (
@@ -170,6 +180,14 @@ def search_images_by_text(
             matching_images_statement = matching_images_statement.where(
                 OsmPlace.id.is_(None),
                 ImageEmbedding.source_url.is_(None),
+            )
+        if city:
+            matching_images_statement = matching_images_statement.where(
+                func.lower(OsmPlace.city) == city.strip().lower()
+            )
+        if cuisine:
+            matching_images_statement = matching_images_statement.where(
+                cuisine_filter(cuisine)
             )
         matches_by_id.update(
             {
@@ -202,6 +220,7 @@ def search_images_by_text(
             restaurant_name=place.name if place else None,
             restaurant_location=place.location if place else None,
             restaurant_cuisine=place.cuisine if place else None,
+            restaurant_features=place.features or [] if place else [],
             restaurant_source_url=place.source_url if place else None,
             restaurant_attribution=(
                 "© OpenStreetMap contributors" if place else None

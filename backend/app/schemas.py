@@ -34,10 +34,12 @@ class OsmPlaceRead(BaseModel):
     location: str | None
     latitude: float | None
     longitude: float | None
-    wikimedia_commons: str
+    features: list[str]
+    wikimedia_commons: str | None
     source_url: str
     attribution: str
     attribution_url: str
+    has_photos: bool
 
 
 class DocumentSearchRequest(BaseModel):
@@ -61,6 +63,8 @@ class ImageSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     top_k: int = Field(default=5, ge=1, le=20)
     osm_places_only: bool = False
+    city: str | None = Field(default=None, min_length=1, max_length=100)
+    cuisine: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 class ImageSearchResult(BaseModel):
@@ -76,9 +80,34 @@ class ImageSearchResult(BaseModel):
     restaurant_name: str | None = None
     restaurant_location: str | None = None
     restaurant_cuisine: str | None = None
+    restaurant_features: list[str] = Field(default_factory=list)
     restaurant_source_url: str | None = None
     restaurant_attribution: str | None = None
     restaurant_attribution_url: str | None = None
+
+
+class OsmRestaurantSearchRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    query: str = Field(min_length=1, max_length=2000)
+    top_k: int = Field(default=12, ge=1, le=20)
+    city: str | None = Field(default=None, min_length=1, max_length=100)
+    cuisine: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class OsmRestaurantSearchResult(BaseModel):
+    id: UUID
+    name: str
+    city: str
+    cuisine: str | None
+    location: str | None
+    latitude: float | None
+    longitude: float | None
+    features: list[str] = Field(default_factory=list)
+    source_url: str
+    attribution: str
+    attribution_url: str
+    similarity: float
 
 
 class RagQuestionRequest(BaseModel):

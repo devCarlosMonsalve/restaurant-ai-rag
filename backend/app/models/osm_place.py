@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Float, String, UniqueConstraint
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import BigInteger, Float, JSON, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,5 +27,7 @@ class OsmPlace(Base):
     location: Mapped[str | None] = mapped_column(String(512), nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
-    wikimedia_commons: Mapped[str] = mapped_column(String(512), nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    features: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    wikimedia_commons: Mapped[str | None] = mapped_column(String(512), nullable=True)
     source_url: Mapped[str] = mapped_column(String(2048), nullable=False)

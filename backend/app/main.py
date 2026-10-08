@@ -8,14 +8,18 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.document_search import search_document_chunks
 from app.image_search import search_images_by_text
+from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.models.restaurant import Restaurant
+from app.restaurant_search import search_osm_places_by_text
 from app.schemas import (
     DocumentSearchRequest,
     DocumentSearchResult,
     ImageSearchRequest,
     ImageSearchResult,
     OsmPlaceRead,
+    OsmRestaurantSearchRequest,
+    OsmRestaurantSearchResult,
     RagAnswerResponse,
     RagQuestionRequest,
     RestaurantCreate,
@@ -62,7 +66,14 @@ def list_restaurants(db: Session = Depends(get_db)) -> list[Restaurant]:
 
 @app.get("/restaurants/osm", response_model=list[OsmPlaceRead], tags=["restaurants"])
 def list_osm_places(db: Session = Depends(get_db)) -> list[OsmPlaceRead]:
-    places = db.scalars(select(OsmPlace).order_by(OsmPlace.name)).all()
+    has_photos = (
+        select(ImageEmbedding.id)
+        .where(ImageEmbedding.osm_place_id == OsmPlace.id)
+        .exists()
+    )
+    places = db.execute(
+        select(OsmPlace, has_photos.label("has_photos")).order_by(OsmPlace.name)
+    ).all()
     return [
         OsmPlaceRead(
             id=place.id,
@@ -74,13 +85,33 @@ def list_osm_places(db: Session = Depends(get_db)) -> list[OsmPlaceRead]:
             location=place.location,
             latitude=place.latitude,
             longitude=place.longitude,
+            features=place.features or [],
             wikimedia_commons=place.wikimedia_commons,
             source_url=place.source_url,
             attribution=OSM_ATTRIBUTION,
             attribution_url=OSM_ATTRIBUTION_URL,
+            has_photos=place_has_photos,
         )
-        for place in places
+        for place, place_has_photos in places
     ]
+
+
+@app.post(
+    "/restaurants/osm/search",
+    response_model=list[OsmRestaurantSearchResult],
+    tags=["restaurants"],
+)
+def search_osm_restaurants(
+    request: OsmRestaurantSearchRequest,
+    db: Session = Depends(get_db),
+) -> list[OsmRestaurantSearchResult]:
+    return search_osm_places_by_text(
+        request.query,
+        db,
+        top_k=request.top_k,
+        city=request.city,
+        cuisine=request.cuisine,
+    )
 
 
 @app.post(
@@ -121,6 +152,8 @@ def search_images(
         db,
         top_k=request.top_k,
         osm_places_only=request.osm_places_only,
+        city=request.city,
+        cuisine=request.cuisine,
     )
 
 

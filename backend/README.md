@@ -38,7 +38,11 @@ stored in the PostgreSQL `image_embeddings` table. This endpoint returns paths,
 not image file contents.
 The optional `osm_places_only` request field filters results to real places
 imported from OpenStreetMap; it defaults to `false` so the sample image
-evaluation remains unchanged.
+evaluation remains unchanged. The optional `city` field restricts results to
+that exact imported city, and `cuisine` filters by an exact OSM cuisine tag.
+The web page populates both selectors from the OSM places available in the
+selected city; places without cuisine metadata remain available under
+“Cualquier cocina”.
 
 ## Evaluate image search
 
@@ -75,20 +79,44 @@ them as visually close suggestions instead of implying an exact match.
 
 ## Import Madrid places and Commons photos
 
-The pilot uses Madrid restaurant entries that explicitly link to a Wikimedia
-Commons `Category:` or `File:` in OpenStreetMap. It downloads only JPEG, PNG, or
-WebP images with CC0, public-domain, or CC BY 1.0–4.0 licenses; other licenses
-are skipped. File-page URL, license, author attribution, and the OSM place
-reference are stored alongside each embedding.
+The importer stores named Madrid restaurants from OpenStreetMap, including
+places without photos. It only looks up a photo when OSM explicitly links to a
+Wikimedia Commons `Category:` or `File:`. It downloads only JPEG, PNG, or WebP
+images with CC0, public-domain, or CC BY 1.0–4.0 licenses; other licenses are
+skipped. File-page URL, license, author attribution, and the OSM place
+reference are stored alongside each embedding. Places without an indexed photo
+appear as text-matched fichas without an image; no photo is guessed or
+associated by name alone.
 
 Apply the latest migration and run the limited import:
 
 ```powershell
 .\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe ingest_madrid_commons_images.py --limit 5 --photos-per-place 2
+.\.venv\Scripts\python.exe ingest_madrid_commons_images.py --photos-per-place 2
 ```
 
-The API exposes imported places at `GET /restaurants/osm`. Image search results
+By default the import fetches all named restaurants returned by the Madrid
+Overpass query. Use `--limit N` for a smaller test import.
+
+The API exposes imported places at `GET /restaurants/osm`, including a
+`has_photos` flag. Image search results
 include Commons photo attribution and license links, plus OSM place attribution.
 Display those attributions when showing the images. OSM data is available under
 the ODbL; see [OpenStreetMap copyright](https://www.openstreetmap.org/copyright).
+
+To search restaurant fichas without indexed photos semantically, apply the
+latest migration and generate place embeddings with the configured Gemini
+embedding model:
+
+```powershell
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe ingest_osm_place_embeddings.py
+```
+
+The embedding importer is resumable: it indexes places whose metadata changed
+or whose vector is missing. `POST /restaurants/osm/search` uses those vectors
+with optional city and cuisine filters. Its similarity score is independent of
+the CLIP photo score. Explicitly tagged OSM attributes such as outdoor seating,
+diet options, wheelchair access, air conditioning, and reservations are included
+in the metadata text. Missing or negative tags are not treated as available
+features.

@@ -1,8 +1,10 @@
 import html
 import json
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -29,6 +31,31 @@ SUPPORTED_LICENSES = {
     "cc by 3.0",
     "cc by 4.0",
 }
+OSM_FEATURE_TAGS = {
+    "outdoor_seating": "Mesas al aire libre",
+    "diet:vegetarian": "Opciones vegetarianas",
+    "diet:vegan": "Opciones veganas",
+    "diet:gluten_free": "Opciones sin gluten",
+    "diet:lactose_free": "Opciones sin lactosa",
+    "diet:halal": "Comida halal",
+    "diet:kosher": "Comida kosher",
+    "wheelchair": "Acceso en silla de ruedas",
+    "wheelchair:description": "Accesibilidad",
+    "air_conditioning": "Aire acondicionado",
+    "live_music": "Música en vivo",
+    "internet_access": "Acceso a internet",
+    "takeaway": "Comida para llevar",
+    "delivery": "Reparto a domicilio",
+    "reservation": "Reservas",
+}
+_POSITIVE_FEATURE_VALUES = {"yes", "only", "limited", "wlan", "wired"}
+_FEATURE_VALUE_LABELS = {
+    "yes": "disponible",
+    "only": "exclusivo",
+    "limited": "limitado",
+    "wlan": "Wi-Fi disponible",
+    "wired": "acceso por cable",
+}
 
 
 @dataclass(frozen=True)
@@ -41,7 +68,8 @@ class OSMRestaurant:
     location: str | None
     latitude: float
     longitude: float
-    wikimedia_commons: str
+    wikimedia_commons: str | None
+    features: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def source_url(self) -> str:
@@ -90,17 +118,46 @@ def _request_json(url: str, *, data: bytes | None = None) -> dict[str, Any]:
     return payload
 
 
+def _extract_restaurant_features(tags: dict[str, str]) -> tuple[str, ...]:
+    features = []
+    for key, label in OSM_FEATURE_TAGS.items():
+        raw_value = tags.get(key)
+        if not raw_value:
+            continue
+        value = raw_value.strip()
+        normalized_value = value.casefold()
+        if key == "wheelchair":
+            if normalized_value not in {"yes", "limited"}:
+                continue
+            description = (
+                "accesible"
+                if normalized_value == "yes"
+                else "accesibilidad limitada"
+            )
+        elif key == "wheelchair:description":
+            description = value[:300]
+        else:
+            if normalized_value not in _POSITIVE_FEATURE_VALUES:
+                continue
+            description = _FEATURE_VALUE_LABELS[normalized_value]
+        features.append(f"{label}: {description}")
+    return tuple(features)
+
+
 def parse_madrid_restaurants(
     payload: dict[str, Any],
     *,
-    limit: int,
+    limit: int | None = None,
 ) -> list[OSMRestaurant]:
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be greater than zero")
+
     restaurants = []
     for element in payload.get("elements", []):
         tags = element.get("tags", {})
         name = tags.get("name")
         commons_reference = tags.get("wikimedia_commons")
-        if not name or not commons_reference:
+        if not name:
             continue
 
         center = element.get("center", element)
@@ -135,30 +192,37 @@ def parse_madrid_restaurants(
                 location=address[:512] if address else None,
                 latitude=float(latitude),
                 longitude=float(longitude),
-                wikimedia_commons=commons_reference[:512],
+                wikimedia_commons=commons_reference[:512] if commons_reference else None,
+                features=_extract_restaurant_features(tags),
             )
         )
-        if len(restaurants) == limit:
+        if limit is not None and len(restaurants) == limit:
             break
 
     return restaurants
 
 
-def fetch_madrid_restaurants(*, limit: int = 20) -> list[OSMRestaurant]:
-    if not 1 <= limit <= 100:
-        raise ValueError("limit must be between 1 and 100")
+def fetch_madrid_restaurants(*, limit: int | None = None) -> list[OSMRestaurant]:
+    if limit is not None and not 1 <= limit <= 10000:
+        raise ValueError("limit must be between 1 and 10000")
 
+    output_clause = f"out center {limit};" if limit is not None else "out center;"
     query = (
-        '[out:json][timeout:25];'
+        '[out:json][timeout:60];'
         'area["name"="Madrid"]["boundary"="administrative"]'
         '["admin_level"="8"]->.city;'
-        'nwr["amenity"="restaurant"]["wikimedia_commons"](area.city);'
-        f"out center {limit};"
+        'nwr["amenity"="restaurant"](area.city);'
+        f"{output_clause}"
     )
-    payload = _request_json(
-        OVERPASS_URL,
-        data=urlencode({"data": query}).encode("utf-8"),
-    )
+    request_data = urlencode({"data": query}).encode("utf-8")
+    for attempt in range(3):
+        try:
+            payload = _request_json(OVERPASS_URL, data=request_data)
+            break
+        except HTTPError as error:
+            if error.code not in {429, 502, 503, 504} or attempt == 2:
+                raise
+            time.sleep(2**attempt)
     return parse_madrid_restaurants(payload, limit=limit)
 
 

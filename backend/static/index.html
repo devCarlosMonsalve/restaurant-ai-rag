@@ -24,6 +24,7 @@
       header p { max-width: 620px; margin: 0; color: #62665f; font-size: 1.04rem; line-height: 1.6; }
       form { display: flex; gap: 10px; margin: 28px 0 12px; }
       input { flex: 1; min-width: 0; border: 1px solid #d8d7ce; border-radius: 12px; padding: 15px 16px; background: white; color: inherit; font: inherit; }
+      select { border: 1px solid #d8d7ce; border-radius: 12px; padding: 0 14px; background: white; color: inherit; font: inherit; }
       input:focus { border-color: #526b45; outline: 3px solid #526b4526; }
       button { border: 0; border-radius: 12px; padding: 0 22px; background: #344b31; color: white; font: inherit; font-weight: 700; cursor: pointer; }
       button:hover { background: #263b24; }
@@ -37,8 +38,14 @@
       .card h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 1.45rem; font-weight: 600; }
       .details { margin: 7px 0 15px; color: #686b63; font-size: .9rem; }
       .score { float: right; border-radius: 999px; padding: 5px 9px; background: #edf1e9; color: #40583a; font-size: .76rem; font-weight: 700; }
+      .semantic-score { background: #e9edf6; color: #3e5274; }
       .credits { display: grid; gap: 6px; border-top: 1px solid #efeee9; padding-top: 12px; color: #6b6d66; font-size: .78rem; line-height: 1.45; }
       .credits a { color: #425f3c; }
+      .no-photo-results { margin: 0 0 44px; }
+      .no-photo-results h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; }
+      .no-photo-card { padding: 17px; }
+      .no-photo-label { color: #74766f; font-size: .8rem; }
+      .place-features { margin: 0 0 12px; padding-left: 18px; color: #485942; font-size: .84rem; line-height: 1.5; }
       footer { border-top: 1px solid #e4e1d8; padding: 18px 0 28px; color: #74766f; font-size: .78rem; line-height: 1.6; }
       @media (max-width: 540px) {
         .page { width: min(100% - 28px, 1080px); }
@@ -53,15 +60,26 @@
       <header>
         <div class="eyebrow">Restaurantes reales · Madrid</div>
         <h1>¿Qué te apetece?</h1>
-        <p>Describe un plato, un ambiente o un tipo de cocina. Encuentra fotos y restaurantes de Madrid usando búsqueda semántica.</p>
+        <p>Describe un plato, un ambiente o un tipo de cocina. Encuentra fotos y restaurantes en la ciudad que elijas usando búsqueda semántica.</p>
         <form id="search-form">
+          <select id="city" name="city" aria-label="Ciudad" disabled>
+            <option value="">Cargando ciudades…</option>
+          </select>
+          <select id="cuisine" name="cuisine" aria-label="Tipo de cocina" disabled>
+            <option value="">Cargando cocinas…</option>
+          </select>
           <input id="query" name="query" type="search" placeholder="Ej. restaurante con pasta y terraza" autocomplete="off" required>
           <button id="submit" type="submit">Buscar</button>
         </form>
-        <div class="hint">El ranking combina coincidencias con datos del lugar y similitud visual CLIP. La similitud no es confianza; las fotos incluyen licencia y atribución.</div>
+        <div class="hint">Las fotos se ordenan con CLIP y datos del lugar; las fichas sin foto usan búsqueda semántica de nombre, cocina y ubicación. Las puntuaciones son similitudes, no niveles de confianza.</div>
       </header>
       <div id="status" role="status" aria-live="polite">Prueba: «Café histórico en Madrid»</div>
       <section id="results" class="grid" aria-label="Resultados"></section>
+      <section id="no-photo-section" class="no-photo-results" aria-label="Restaurantes sin foto" hidden>
+        <h2>Restaurantes sin foto disponible</h2>
+        <p class="hint">Resultados semánticos sobre nombre, cocina y ubicación. No hay una foto con licencia verificada para estos lugares.</p>
+        <div id="no-photo-results" class="grid"></div>
+      </section>
       <footer>
         Datos de lugares © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>.
         Fotos de Wikimedia Commons mostradas con sus licencias y atribuciones respectivas.
@@ -70,9 +88,42 @@
     <script>
       const form = document.querySelector("#search-form");
       const input = document.querySelector("#query");
+      const citySelect = document.querySelector("#city");
+      const cuisineSelect = document.querySelector("#cuisine");
       const submit = document.querySelector("#submit");
       const status = document.querySelector("#status");
       const results = document.querySelector("#results");
+      const noPhotoSection = document.querySelector("#no-photo-section");
+      const noPhotoResults = document.querySelector("#no-photo-results");
+      let indexedPlaces = [];
+      const cuisineLabels = {
+        chicken: "Pollo",
+        international: "Internacional",
+        mexican: "Mexicana",
+        regional: "Regional",
+        spanish: "Española",
+        tapas: "Tapas"
+      };
+
+      function updateCuisineOptions() {
+        const currentCuisine = cuisineSelect.value;
+        const availableCuisines = [...new Set(
+          indexedPlaces
+            .filter((place) => place.city === citySelect.value)
+            .flatMap((place) => (place.cuisine || "").split(";"))
+            .map((cuisine) => cuisine.trim())
+            .filter(Boolean)
+        )].sort((left, right) => left.localeCompare(right));
+        const options = [new Option("Cualquier cocina", "")];
+        for (const cuisine of availableCuisines) {
+          options.push(new Option(cuisineLabels[cuisine] || cuisine, cuisine));
+        }
+        cuisineSelect.replaceChildren(...options);
+        cuisineSelect.disabled = false;
+        cuisineSelect.value = availableCuisines.includes(currentCuisine)
+          ? currentCuisine
+          : "";
+      }
 
       function escapeHtml(value) {
         return String(value ?? "").replace(/[&<>"']/g, (character) => ({
@@ -96,6 +147,7 @@
           : "";
         const details = [item.restaurant_location, item.restaurant_cuisine]
           .filter(Boolean).map(escapeHtml).join(" · ");
+        const features = renderFeatures(item.restaurant_features);
 
         return `
           <article class="card">
@@ -104,6 +156,7 @@
               <span class="score">CLIP ${item.similarity.toFixed(3)}</span>
               <h2>${escapeHtml(item.restaurant_name || item.source_name)}</h2>
               <p class="details">${details || "Madrid"}</p>
+              ${features}
               <div class="credits">
                 <div>${photoCredit}</div>
                 <div>Licencia: ${license}</div>
@@ -114,29 +167,93 @@
           </article>`;
       }
 
+      function normalizeText(value) {
+        return String(value ?? "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLocaleLowerCase();
+      }
+
+      function renderFeatures(features) {
+        const items = (features || [])
+          .map((feature) => `<li>${escapeHtml(feature)}</li>`)
+          .join("");
+        return items ? `<ul class="place-features">${items}</ul>` : "";
+      }
+
+      function renderPlaceCard(place) {
+        const details = [place.cuisine, place.location]
+          .filter(Boolean).map(escapeHtml).join(" · ");
+        return `
+          <article class="card no-photo-card">
+            <span class="score semantic-score">SEM ${place.similarity.toFixed(3)}</span>
+            <span class="no-photo-label">Sin foto disponible</span>
+            <h2>${escapeHtml(place.name)}</h2>
+            <p class="details">${details || escapeHtml(place.city)}</p>
+            ${renderFeatures(place.features)}
+            <div class="credits">
+              <div>Datos: ${escapeHtml(place.attribution)}</div>
+              <a href="${escapeHtml(place.source_url)}" target="_blank" rel="noopener noreferrer">Ver lugar en OpenStreetMap</a>
+            </div>
+          </article>`;
+      }
+
       async function search(query) {
         submit.disabled = true;
-        status.textContent = "Buscando entre las fotos de restaurantes de Madrid…";
+        status.textContent = "Buscando fotos y fichas de restaurantes…";
         results.replaceChildren();
+        noPhotoResults.replaceChildren();
+        noPhotoSection.hidden = true;
         try {
-          const response = await fetch("/images/search", {
+          const requestOptions = {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query, top_k: 20, osm_places_only: true })
-          });
-          if (!response.ok) {
-            const detail = await response.text();
-            throw new Error(`La búsqueda falló (${response.status}): ${detail}`);
+            headers: { "Content-Type": "application/json" }
+          };
+          const [imageResponse, restaurantResponse] = await Promise.all([
+            fetch("/images/search", {
+              ...requestOptions,
+              body: JSON.stringify({
+                query,
+                top_k: 20,
+                osm_places_only: true,
+                city: citySelect.value,
+                cuisine: cuisineSelect.value || null
+              })
+            }),
+            fetch("/restaurants/osm/search", {
+              ...requestOptions,
+              body: JSON.stringify({
+                query,
+                top_k: 12,
+                city: citySelect.value,
+                cuisine: cuisineSelect.value || null
+              })
+            })
+          ]);
+          if (!imageResponse.ok || !restaurantResponse.ok) {
+            const failedResponse = !imageResponse.ok ? imageResponse : restaurantResponse;
+            const detail = await failedResponse.text();
+            throw new Error(`La búsqueda falló (${failedResponse.status}): ${detail}`);
           }
-          const matches = await response.json();
-          if (matches.length === 0) {
-            status.textContent = "No hay fotos de restaurantes que coincidan. Prueba con otra descripción.";
-            return;
-          }
+          const [matches, noPhotoPlaces] = await Promise.all([
+            imageResponse.json(),
+            restaurantResponse.json()
+          ]);
           results.innerHTML = matches.map(renderCard).join("");
-          status.textContent = matches[0].metadata_match_count > 0
-            ? `${matches.length} foto${matches.length === 1 ? "" : "s"} con coincidencia textual.`
-            : `No encontramos coincidencias en los datos. Mostramos ${matches.length} foto${matches.length === 1 ? "" : "s"} visualmente cercanas como sugerencias.`;
+          if (noPhotoPlaces.length > 0) {
+            noPhotoResults.innerHTML = noPhotoPlaces.map(renderPlaceCard).join("");
+            noPhotoSection.hidden = false;
+          }
+          const photoStatus = matches.length === 0
+            ? "No hay fotos de restaurantes que coincidan."
+            : cuisineSelect.value
+            ? `${matches.length} fotos de cocina ${cuisineLabels[cuisineSelect.value] || cuisineSelect.value} en ${citySelect.value}.`
+            : matches[0].metadata_match_count > 0
+            ? `${matches.length} fotos con coincidencia textual.`
+            : `No encontramos coincidencias textuales en ${citySelect.value}. Mostramos ${matches.length} fotos visualmente cercanas como sugerencias.`;
+          status.textContent = noPhotoPlaces.length > 0
+            ? `${photoStatus} Además, ${noPhotoPlaces.length} restaurantes sin foto encontrados semánticamente.`
+            : `${photoStatus} No hay restaurantes sin foto que coincidan semánticamente.`;
         } catch (error) {
           status.textContent = error.message;
         } finally {
@@ -150,8 +267,46 @@
         if (query) search(query);
       });
 
-      input.value = "Café histórico en Madrid";
-      search(input.value);
+      citySelect.addEventListener("change", () => {
+        updateCuisineOptions();
+        const query = input.value.trim();
+        if (query) search(query);
+      });
+      cuisineSelect.addEventListener("change", () => {
+        const query = input.value.trim();
+        if (query) search(query);
+      });
+
+      async function initialize() {
+        try {
+          const response = await fetch("/restaurants/osm");
+          if (!response.ok) {
+            throw new Error(`No se pudieron cargar las ciudades (${response.status}).`);
+          }
+          indexedPlaces = await response.json();
+          const cities = [...new Set(indexedPlaces.map((place) => place.city).filter(Boolean))];
+          if (cities.length === 0) {
+            throw new Error("No hay restaurantes OSM importados para buscar.");
+          }
+          citySelect.replaceChildren(...cities.map((city) => {
+            const option = document.createElement("option");
+            option.value = city;
+            option.textContent = city;
+            return option;
+          }));
+          citySelect.disabled = false;
+          citySelect.value = cities.includes("Madrid") ? "Madrid" : cities[0];
+          updateCuisineOptions();
+          input.value = citySelect.value === "Madrid"
+            ? "Café histórico en Madrid"
+            : `restaurant in ${citySelect.value}`;
+          await search(input.value);
+        } catch (error) {
+          status.textContent = error.message;
+        }
+      }
+
+      initialize();
     </script>
   </body>
 </html>

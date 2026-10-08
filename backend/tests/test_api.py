@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.schemas import (
     DocumentSearchResult,
+    OsmRestaurantSearchResult,
     RagAnswerResponse,
     RagSource,
 )
@@ -14,6 +15,9 @@ def test_home_serves_restaurant_search_page(client: TestClient) -> None:
     assert response.status_code == 200
     assert "Saborea Madrid" in response.text
     assert 'id="search-form"' in response.text
+    assert 'id="city"' in response.text
+    assert 'id="cuisine"' in response.text
+    assert 'id="no-photo-section"' in response.text
 
 
 def test_commons_image_route_serves_only_files_from_image_directory(
@@ -93,7 +97,7 @@ def test_list_osm_places_includes_required_attribution(
             location="Calle Mayor 10",
             latitude=40.4,
             longitude=-3.7,
-            wikimedia_commons="Category:Example Restaurant",
+            wikimedia_commons=None,
             source_url="https://www.openstreetmap.org/node/123",
         )
     )
@@ -110,6 +114,62 @@ def test_list_osm_places_includes_required_attribution(
     assert response.json()[0]["attribution_url"] == (
         "https://www.openstreetmap.org/copyright"
     )
+    assert response.json()[0]["wikimedia_commons"] is None
+    assert response.json()[0]["has_photos"] is False
+    assert response.json()[0]["features"] == []
+
+
+def test_osm_restaurant_search_returns_semantic_matches(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    expected = [
+        OsmRestaurantSearchResult(
+            id="e4ada293-47d1-492e-b6f3-ff27aa6624d1",
+            name="Honest Greens",
+            city="Madrid",
+            cuisine="vegetarian",
+            location="Calle de la Luna",
+            latitude=40.4,
+            longitude=-3.7,
+            source_url="https://www.openstreetmap.org/node/123",
+            attribution="© OpenStreetMap contributors",
+            attribution_url="https://www.openstreetmap.org/copyright",
+            similarity=0.82,
+        )
+    ]
+    calls = {}
+
+    def fake_search(query, session, *, top_k, city, cuisine):
+        calls.update(
+            query=query,
+            top_k=top_k,
+            city=city,
+            cuisine=cuisine,
+        )
+        return expected
+
+    monkeypatch.setattr("app.main.search_osm_places_by_text", fake_search)
+
+    response = client.post(
+        "/restaurants/osm/search",
+        json={
+            "query": "vegetarian food",
+            "top_k": 3,
+            "city": "Madrid",
+            "cuisine": "vegetarian",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == "Honest Greens"
+    assert response.json()[0]["similarity"] == 0.82
+    assert calls == {
+        "query": "vegetarian food",
+        "top_k": 3,
+        "city": "Madrid",
+        "cuisine": "vegetarian",
+    }
 
 
 def test_document_search_returns_ranked_chunks(
