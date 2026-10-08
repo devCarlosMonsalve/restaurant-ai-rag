@@ -166,23 +166,18 @@ def test_image_search_endpoint_returns_matches(
     ]
     calls = {}
 
-    def fake_search(
-        query: str,
-        session: Session,
-        *,
-        top_k: int,
-        osm_places_only: bool = False,
-        city: str | None = None,
-        cuisine: str | None = None,
-    ):
-        calls["query"] = query
-        calls["top_k"] = top_k
-        calls["osm_places_only"] = osm_places_only
-        calls["city"] = city
-        calls["cuisine"] = cuisine
+    def fake_search(request, session: Session):
+        calls["query"] = request.query
+        calls["top_k"] = request.top_k
+        calls["osm_places_only"] = request.osm_places_only
+        calls["city"] = request.city
+        calls["cuisine"] = request.cuisine
         return expected_results
 
-    monkeypatch.setattr("app.main.search_restaurant_photos", fake_search)
+    monkeypatch.setattr(
+        "app.main.search_restaurant_photos_use_case",
+        fake_search,
+    )
     response = client.post(
         "/images/search",
         json={

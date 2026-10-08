@@ -146,16 +146,16 @@ def test_osm_restaurant_search_returns_semantic_matches(
     )
     calls = {}
 
-    def fake_search(query, session, *, top_k, city, cuisine):
+    def fake_search(request, session):
         calls.update(
-            query=query,
-            top_k=top_k,
-            city=city,
-            cuisine=cuisine,
+            query=request.query,
+            top_k=request.top_k,
+            city=request.city,
+            cuisine=request.cuisine,
         )
         return expected
 
-    monkeypatch.setattr("app.main.search_restaurants", fake_search)
+    monkeypatch.setattr("app.main.search_restaurants_use_case", fake_search)
 
     response = client.post(
         "/restaurants/osm/search",
@@ -194,12 +194,12 @@ def test_document_search_returns_ranked_chunks(
     ]
     calls = {}
 
-    def fake_search(query, session, *, top_k):
-        calls["query"] = query
-        calls["top_k"] = top_k
+    def fake_search(request, session):
+        calls["query"] = request.query
+        calls["top_k"] = request.top_k
         return expected_results
 
-    monkeypatch.setattr("app.main.search_documents_tool", fake_search)
+    monkeypatch.setattr("app.main.search_documents_use_case", fake_search)
 
     response = client.post(
         "/documents/search",
@@ -244,12 +244,12 @@ def test_ask_documents_returns_answer_and_sources(
     )
     calls = {}
 
-    def fake_answer(query, session, *, top_k):
-        calls["query"] = query
-        calls["top_k"] = top_k
+    def fake_answer(request, session):
+        calls["query"] = request.query
+        calls["top_k"] = request.top_k
         return expected_response
 
-    monkeypatch.setattr("app.main.answer_from_documents", fake_answer)
+    monkeypatch.setattr("app.main.answer_documents_use_case", fake_answer)
 
     response = client.post(
         "/documents/ask",

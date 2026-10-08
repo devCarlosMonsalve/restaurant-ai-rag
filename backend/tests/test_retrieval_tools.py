@@ -21,12 +21,19 @@ def test_search_restaurant_photos_delegates_to_existing_image_search(
     expected = [sentinel.image_result]
     calls = {}
 
-    def fake_search(query, session, **kwargs):
-        calls.update(query=query, session=session, **kwargs)
+    def fake_search(request, session):
+        calls.update(
+            query=request.query,
+            session=session,
+            top_k=request.top_k,
+            city=request.city,
+            cuisine=request.cuisine,
+            osm_places_only=request.osm_places_only,
+        )
         return expected
 
     monkeypatch.setattr(
-        "app.tools.restaurant_photos.search_images_by_text",
+        "app.tools.restaurant_photos.search_restaurant_photos_use_case",
         fake_search,
     )
 
@@ -54,12 +61,19 @@ def test_search_restaurant_photos_can_preserve_sample_corpus_mode(
 ) -> None:
     calls = {}
 
-    def fake_search(query, session, **kwargs):
-        calls.update(query=query, session=session, **kwargs)
+    def fake_search(request, session):
+        calls.update(
+            query=request.query,
+            session=session,
+            top_k=request.top_k,
+            city=request.city,
+            cuisine=request.cuisine,
+            osm_places_only=request.osm_places_only,
+        )
         return []
 
     monkeypatch.setattr(
-        "app.tools.restaurant_photos.search_images_by_text",
+        "app.tools.restaurant_photos.search_restaurant_photos_use_case",
         fake_search,
     )
 
@@ -86,12 +100,16 @@ def test_search_documents_delegates_to_existing_document_retrieval(
     ]
     calls = {}
 
-    def fake_search(query, session, *, top_k):
-        calls.update(query=query, session=session, top_k=top_k)
+    def fake_search(request, session):
+        calls.update(
+            query=request.query,
+            session=session,
+            top_k=request.top_k,
+        )
         return expected
 
     monkeypatch.setattr(
-        "app.tools.document_search.search_document_chunks",
+        "app.tools.document_search.search_documents_use_case",
         fake_search,
     )
 
@@ -119,7 +137,10 @@ def test_answer_from_documents_delegates_to_existing_rag_service(
         )
         return expected
 
-    monkeypatch.setattr("app.tools.document_answer.answer_with_rag", fake_answer)
+    monkeypatch.setattr(
+        "app.tools.document_answer.answer_from_documents_use_case",
+        fake_answer,
+    )
 
     response = answer_from_documents(
         "  how is pasta prepared?  ",

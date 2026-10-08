@@ -138,8 +138,13 @@ but are marked as unverified.
 
 ## Tool layer
 
-The `app.tools` package exposes the existing retrieval and RAG capabilities as
-thin Tool boundaries:
+The application layer groups use cases by bounded context. The
+`app.application.restaurant_discovery` module coordinates restaurant and photo
+search; `app.application.knowledge` coordinates document search and grounded
+answers. Each use case accepts an existing request schema and database session,
+then delegates to the frozen service without changing its algorithm or result.
+
+The `app.tools` package exposes these use cases through thin Tool boundaries:
 
 - `search_restaurants` validates with `OsmRestaurantSearchRequest` and delegates
   to `search_osm_places_by_text`, returning `OsmRestaurantSearchResponse`
@@ -154,9 +159,16 @@ thin Tool boundaries:
   `answer_with_rag`, returning the existing grounded answer and source list.
 
 The host injects the database session; it is not a semantic Tool input. The
-existing API endpoints use these same boundaries. These wrappers add no
-retrieval or generation logic and do not introduce an agent, LangGraph, or MCP
-integration.
+FastAPI routes in `app.main` and the Tool adapters are separate entry points
+that call the same application use cases. The existing domain policies,
+SQLAlchemy models, database access, embedding providers, and external-data
+clients remain in their current modules; this incremental structure does not
+add empty domain/infrastructure packages, repositories, or interfaces.
+
+This is a modular-monolith boundary, not a full dependency-inverted DDD
+reorganization. It leaves the current session-based frozen services in place
+until there is a concrete need to separate their persistence dependencies.
+It does not introduce an agent, LangGraph, or MCP integration.
 
 Evaluate the semantic restaurant ranking against known Madrid cuisines,
 features, and one dish-name case. Environment queries are reported for manual

@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
 
-from app.restaurant_search import search_osm_places_by_text
+from app.application.restaurant_discovery import (
+    search_restaurants as search_restaurants_use_case,
+)
 from app.schemas import (
     OsmRestaurantSearchRequest,
     OsmRestaurantSearchResponse,
@@ -26,10 +28,4 @@ def search_restaurants(
         city=city,
         cuisine=cuisine,
     )
-    return search_osm_places_by_text(
-        request.query,
-        session,
-        top_k=request.top_k,
-        city=request.city,
-        cuisine=request.cuisine,
-    )
+    return search_restaurants_use_case(request, session)

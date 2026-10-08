@@ -5,6 +5,14 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.application.knowledge import (
+    answer_from_documents as answer_documents_use_case,
+    search_documents as search_documents_use_case,
+)
+from app.application.restaurant_discovery import (
+    search_restaurant_photos as search_restaurant_photos_use_case,
+    search_restaurants as search_restaurants_use_case,
+)
 from app.database import get_db
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
@@ -22,13 +30,6 @@ from app.schemas import (
     RestaurantCreate,
     RestaurantRead,
 )
-from app.tools import (
-    answer_from_documents,
-    search_documents as search_documents_tool,
-    search_restaurant_photos,
-    search_restaurants,
-)
-
 app = FastAPI(title="Restaurant AI API")
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -107,13 +108,7 @@ def search_osm_restaurants(
     request: OsmRestaurantSearchRequest,
     db: Session = Depends(get_db),
 ) -> OsmRestaurantSearchResponse:
-    return search_restaurants(
-        request.query,
-        db,
-        top_k=request.top_k,
-        city=request.city,
-        cuisine=request.cuisine,
-    )
+    return search_restaurants_use_case(request, db)
 
 
 @app.post(
@@ -125,7 +120,7 @@ def search_documents(
     request: DocumentSearchRequest,
     db: Session = Depends(get_db),
 ) -> list[DocumentSearchResult]:
-    return search_documents_tool(request.query, db, top_k=request.top_k)
+    return search_documents_use_case(request, db)
 
 
 @app.post(
@@ -137,7 +132,7 @@ def ask_documents(
     request: RagQuestionRequest,
     db: Session = Depends(get_db),
 ) -> RagAnswerResponse:
-    return answer_from_documents(request.query, db, top_k=request.top_k)
+    return answer_documents_use_case(request, db)
 
 
 @app.post(
@@ -149,14 +144,7 @@ def search_images(
     request: ImageSearchRequest,
     db: Session = Depends(get_db),
 ) -> list[ImageSearchResult]:
-    return search_restaurant_photos(
-        request.query,
-        db,
-        top_k=request.top_k,
-        city=request.city,
-        cuisine=request.cuisine,
-        osm_places_only=request.osm_places_only,
-    )
+    return search_restaurant_photos_use_case(request, db)
 
 
 @app.get("/", include_in_schema=False)

@@ -17,18 +17,18 @@ def test_search_restaurants_delegates_to_frozen_search_service(
     )
     calls = {}
 
-    def fake_search(query, session, *, top_k, city, cuisine):
+    def fake_search(request, session):
         calls.update(
-            query=query,
+            query=request.query,
             session=session,
-            top_k=top_k,
-            city=city,
-            cuisine=cuisine,
+            top_k=request.top_k,
+            city=request.city,
+            cuisine=request.cuisine,
         )
         return expected
 
     monkeypatch.setattr(
-        "app.tools.restaurant_search.search_osm_places_by_text",
+        "app.tools.restaurant_search.search_restaurants_use_case",
         fake_search,
     )
 
