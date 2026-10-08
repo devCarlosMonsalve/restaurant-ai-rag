@@ -119,6 +119,7 @@ class OsmRestaurantSearchResponse(BaseModel):
         "verified",
         "partial",
         "no_evidence",
+        "stale_evidence",
         "unverified",
     ]
     evidence_message: str | None = None

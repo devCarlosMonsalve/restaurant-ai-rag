@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import uuid4
 
 from app.restaurant_search import search_osm_places_by_text
@@ -62,6 +63,42 @@ def test_fully_vegan_request_requires_exclusive_osm_tag() -> None:
     )
 
 
+def test_kosher_search_requires_a_recent_check_date() -> None:
+    requirement = detect_search_evidence("comida kosher").feature_requirements
+    fresh_features = [
+        "Comida kosher: disponible",
+        "Certificador kosher: Certificador Ejemplo",
+        "Última revisión kosher: 2025-10-08",
+    ]
+
+    assert matches_feature_requirements(
+        fresh_features,
+        requirement,
+        today=date(2026, 10, 8),
+    )
+    assert not matches_feature_requirements(
+        ["Comida kosher: disponible"],
+        requirement,
+        today=date(2026, 10, 8),
+    )
+    assert not matches_feature_requirements(
+        [
+            "Comida kosher: disponible",
+            "Última revisión kosher: 2025-10-07",
+        ],
+        requirement,
+        today=date(2026, 10, 8),
+    )
+    assert not matches_feature_requirements(
+        [
+            "Comida kosher: disponible",
+            "Última revisión kosher: 2026-10-09",
+        ],
+        requirement,
+        today=date(2026, 10, 8),
+    )
+
+
 def test_step_free_access_requires_full_wheelchair_access_tag() -> None:
     evidence = detect_search_evidence("entrada accesible sin escalones")
 
@@ -110,7 +147,7 @@ def test_feature_search_without_matching_tags_returns_no_evidence(
 
     class FakeSession:
         def execute(self, statement):
-            return [(untagged_place, 0.01)]
+            return []
 
     monkeypatch.setattr(
         "app.restaurant_search.embed_search_query",
@@ -125,6 +162,36 @@ def test_feature_search_without_matching_tags_returns_no_evidence(
     assert response.results == []
     assert response.evidence_status == "no_evidence"
     assert "Comida kosher" in response.evidence_message
+
+
+def test_stale_kosher_data_is_not_returned_as_verified(
+    monkeypatch,
+) -> None:
+    place = _place(
+        "Old certification",
+        [
+            "Comida kosher: disponible",
+            "Última revisión kosher: 2020-01-01",
+        ],
+    )
+
+    class FakeSession:
+        def execute(self, statement):
+            return [(place, 0.01)]
+
+    monkeypatch.setattr(
+        "app.restaurant_search.embed_search_query",
+        lambda _: [0.0] * 768,
+    )
+
+    response = search_osm_places_by_text(
+        "cocina kosher",
+        FakeSession(),
+    )
+
+    assert response.results == []
+    assert response.evidence_status == "stale_evidence"
+    assert "fecha de revisión vigente" in response.evidence_message
 
 
 def test_step_free_access_is_confirmed_with_osm_wheelchair_yes(

@@ -58,7 +58,15 @@ def search_osm_places_by_text(
     else:
         statement = statement.limit(top_k)
 
-    ranked_places = session.execute(statement)
+    candidate_places = list(session.execute(statement))
+    matching_places = [
+        (place, distance)
+        for place, distance in candidate_places
+        if matches_feature_requirements(
+            place.features or [],
+            evidence_request.feature_requirements,
+        )
+    ]
     results = [
         OsmRestaurantSearchResult(
             id=place.id,
@@ -74,15 +82,12 @@ def search_osm_places_by_text(
             attribution_url=OSM_ATTRIBUTION_URL,
             similarity=1.0 - float(distance),
         )
-        for place, distance in ranked_places
-        if matches_feature_requirements(
-            place.features or [],
-            evidence_request.feature_requirements,
-        )
-    ][:top_k]
+        for place, distance in matching_places[:top_k]
+    ]
     evidence_status, evidence_message = _evidence_summary(
         evidence_request,
         len(results),
+        len(candidate_places),
     )
     return OsmRestaurantSearchResponse(
         results=results,
@@ -94,6 +99,7 @@ def search_osm_places_by_text(
 def _evidence_summary(
     evidence_request: SearchEvidenceRequest,
     result_count: int,
+    candidate_count: int,
 ) -> tuple[str, str | None]:
     feature_labels = [
         requirement.label for requirement in evidence_request.feature_requirements
@@ -104,6 +110,21 @@ def _evidence_summary(
     if not feature_labels and not unverified_text:
         return "not_required", None
     if feature_labels and result_count == 0:
+        freshness_requirement = next(
+            (
+                requirement
+                for requirement in evidence_request.feature_requirements
+                if requirement.max_age_days is not None
+            ),
+            None,
+        )
+        if freshness_requirement and candidate_count:
+            return (
+                "stale_evidence",
+                "Hay etiquetas kosher en OSM, pero falta una fecha de revisión "
+                f"vigente (máximo {freshness_requirement.max_age_days} días). "
+                "No mostramos esas fichas como certificaciones actuales.",
+            )
         message = (
             f"No encontramos fichas con etiquetas OSM que confirmen: "
             f"{verified_text}. No mostramos coincidencias sin evidencia como "
@@ -133,6 +154,19 @@ def _evidence_summary(
             message += (
                 " Según la convención OSM, wheelchair=yes indica entrada y "
                 "salas sin escalones; confirma que el dato siga vigente."
+            )
+        freshness_requirement = next(
+            (
+                requirement
+                for requirement in evidence_request.feature_requirements
+                if requirement.max_age_days is not None
+            ),
+            None,
+        )
+        if freshness_requirement:
+            message += (
+                f" Para kosher se exige revisión OSM dentro de los últimos "
+                f"{freshness_requirement.max_age_days} días."
             )
         return "verified", message
     return (

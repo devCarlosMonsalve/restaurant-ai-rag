@@ -125,7 +125,9 @@ features. Per the
 `wheelchair=yes` denotes step-free entry and rooms; the interface still advises
 users to confirm that community-maintained data is current. Kosher certifier
 and check-date tags are shown when OSM provides them, but are not independently
-verified by the application. The current Madrid OSM snapshot has no
+verified by the application. Kosher results are considered current only when
+`check_date:diet:kosher` is no older than 365 days; missing, stale, and future
+dates are not returned as verified results. The current Madrid OSM snapshot has no
 `diet:kosher`-tagged restaurants, so those searches deliberately return no
 verified matches instead of inferring certification.
 For searches that explicitly request supported features, photo and no-photo
