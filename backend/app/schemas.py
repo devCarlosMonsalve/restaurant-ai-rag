@@ -68,6 +68,7 @@ class ImageSearchResult(BaseModel):
     source_name: str
     image_path: str
     similarity: float
+    metadata_match_count: int = 0
     source_url: str | None = None
     license_name: str | None = None
     license_url: str | None = None

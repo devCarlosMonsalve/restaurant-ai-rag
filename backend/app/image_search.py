@@ -194,6 +194,7 @@ def search_images_by_text(
             source_name=image.source_name,
             image_path=image.image_path,
             similarity=1.0 - float(distance),
+            metadata_match_count=sum(metadata_matches.get(image.id, (0, 0))),
             source_url=image.source_url,
             license_name=image.license_name,
             license_url=image.license_url,

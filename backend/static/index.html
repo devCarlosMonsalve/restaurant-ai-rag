@@ -134,7 +134,9 @@
             return;
           }
           results.innerHTML = matches.map(renderCard).join("");
-          status.textContent = `${matches.length} foto${matches.length === 1 ? "" : "s"} encontrada${matches.length === 1 ? "" : "s"}.`;
+          status.textContent = matches[0].metadata_match_count > 0
+            ? `${matches.length} foto${matches.length === 1 ? "" : "s"} con coincidencia textual.`
+            : `No encontramos coincidencias en los datos. Mostramos ${matches.length} foto${matches.length === 1 ? "" : "s"} visualmente cercanas como sugerencias.`;
         } catch (error) {
           status.textContent = error.message;
         } finally {

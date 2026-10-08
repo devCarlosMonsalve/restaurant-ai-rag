@@ -72,5 +72,41 @@
     "expected_image": "osm-way-119181119-Casa_Mingo-2009.jpg",
     "should_abstain": false,
     "language": "en"
+  },
+  {
+    "query": "a bowl of ramen noodles with pork and egg",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "en"
+  },
+  {
+    "query": "a restaurant in Barcelona",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "en"
+  },
+  {
+    "query": "a sailboat on the ocean",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "en"
+  },
+  {
+    "query": "restaurante de sushi con salmón en Madrid",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "es"
+  },
+  {
+    "query": "pizza napolitana con mozzarella",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "es"
+  },
+  {
+    "query": "un ramo de flores en un jarrón",
+    "expected_image": null,
+    "should_abstain": true,
+    "language": "es"
   }
 ]

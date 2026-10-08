@@ -153,6 +153,7 @@ def test_image_search_endpoint_returns_matches(
             restaurant_source_url="https://www.openstreetmap.org/node/123",
             restaurant_attribution="© OpenStreetMap contributors",
             restaurant_attribution_url="https://www.openstreetmap.org/copyright",
+            metadata_match_count=2,
         )
     ]
     calls = {}
@@ -191,6 +192,7 @@ def test_image_search_endpoint_returns_matches(
     assert response.json()[0]["restaurant_attribution_url"] == (
         "https://www.openstreetmap.org/copyright"
     )
+    assert response.json()[0]["metadata_match_count"] == 2
     assert calls == {
         "query": "pasta fresca italiana",
         "top_k": 3,

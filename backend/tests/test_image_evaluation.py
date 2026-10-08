@@ -40,7 +40,7 @@ def test_madrid_evaluation_cases_reference_imported_photos() -> None:
         if path.is_file()
     }
 
-    assert len(cases) == 12
+    assert len(cases) == 18
     assert {case["language"] for case in cases} == {"en", "es"}
     image_cases = [
         case for case in cases if case["expected_image"] is not None
@@ -48,13 +48,19 @@ def test_madrid_evaluation_cases_reference_imported_photos() -> None:
     restaurant_cases = [
         case for case in cases if case.get("expected_restaurant") is not None
     ]
-    assert all(not case["should_abstain"] for case in cases)
+    abstention_cases = [
+        case for case in cases if case["should_abstain"]
+    ]
+    assert len(abstention_cases) == 6
+    assert all(not case["should_abstain"] for case in image_cases + restaurant_cases)
     assert all(case["expected_image"] in image_names for case in image_cases)
     assert {case["expected_restaurant"] for case in restaurant_cases} == {"Xamach"}
     assert len(image_cases) == 10
     assert len(restaurant_cases) == 2
-    assert sum(case["language"] == "en" for case in cases) == 6
-    assert sum(case["language"] == "es" for case in cases) == 6
+    assert sum(case["language"] == "en" for case in abstention_cases) == 3
+    assert sum(case["language"] == "es" for case in abstention_cases) == 3
+    assert sum(case["language"] == "en" for case in cases) == 9
+    assert sum(case["language"] == "es" for case in cases) == 9
 
 
 def test_image_evaluation_reports_hit_rates(

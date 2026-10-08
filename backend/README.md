@@ -64,11 +64,14 @@ To evaluate retrieval against the imported Madrid photos instead, run:
 .\.venv\Scripts\python.exe evaluate_image_search.py --cases .\data\image_evaluation\madrid_cases.json --osm-places-only --top-k 3
 ```
 
-This real-photo set contains known Spanish and English queries for restaurant
-entrances, interiors, and dishes; its Hit@1/Hit@3 metrics provide a baseline
-for retrieval. Search results use exact text matches against photo filenames
-and OSM restaurant metadata alongside the visual CLIP ranking. The displayed
-CLIP similarity is not a confidence score.
+This real-photo set contains 12 answerable Spanish and English queries for
+restaurant entrances, interiors, and dishes, plus 6 negative cases. Its
+Hit@1/Hit@3 metrics provide a retrieval baseline, while the negative similarity
+range supports threshold calibration. Search results use exact text matches
+against photo filenames and OSM restaurant metadata alongside the visual CLIP
+ranking. The displayed CLIP similarity is not a confidence score.
+When none of the top results match indexed text metadata, the web page labels
+them as visually close suggestions instead of implying an exact match.
 
 ## Import Madrid places and Commons photos
 
