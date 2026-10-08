@@ -7,6 +7,8 @@ from sqlalchemy import and_, cast, or_
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql.elements import ColumnElement
 
+KOSHER_MAX_AGE_DAYS = 365
+
 
 @dataclass(frozen=True)
 class FeatureRequirement:
@@ -122,7 +124,9 @@ def detect_search_evidence(query: str) -> SearchEvidenceRequest:
                 FeatureRequirement(
                     label=label,
                     value=value,
-                    max_age_days=365 if label == "Comida kosher" else None,
+                    max_age_days=(
+                        KOSHER_MAX_AGE_DAYS if label == "Comida kosher" else None
+                    ),
                 )
             )
 

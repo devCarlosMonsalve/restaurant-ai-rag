@@ -147,6 +147,20 @@ review because OSM does not provide reliable labels for atmosphere:
 The evaluator reports Hit@1, Hit@3, MRR@K, and Precision@3 for feature cases.
 It does not apply a similarity threshold.
 
+Audit the current Madrid catalog's evidence coverage, embeddings, photo coverage,
+kosher freshness, and saved manual holdout judgments with:
+
+```powershell
+.\.venv\Scripts\python.exe audit_restaurant_coverage.py
+.\.venv\Scripts\python.exe audit_restaurant_coverage.py --format json
+```
+
+Use `--as-of YYYY-MM-DD` to reproduce freshness counts for a specific date.
+Feature percentages use all named restaurants in the selected city as the
+denominator. Kosher freshness follows the same 365-day rule as search. The
+holdout summary reports stored human judgments only; it is not an automatic
+ranking score.
+
 To inspect a separate set of novel queries without using them as labeled
 benchmark cases, run:
 
