@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import quote
 
 from google.genai import types
 from pydantic import BaseModel, ValidationError
@@ -131,7 +133,13 @@ def dispatch_tool_call(
 def _serialize_result(value: Any) -> Any:
     if isinstance(value, BaseModel):
         excluded = {"image_path"} if isinstance(value, ImageSearchResult) else None
-        return value.model_dump(mode="json", exclude=excluded)
+        result = value.model_dump(mode="json", exclude=excluded)
+        if isinstance(value, ImageSearchResult):
+            filename = Path(value.image_path.replace("\\", "/")).name
+            if not filename:
+                raise ValueError("Photo result has no valid filename")
+            result["image_url"] = f"/images/files/{quote(filename, safe='')}"
+        return result
     if isinstance(value, list):
         return [_serialize_result(item) for item in value]
     if isinstance(value, dict):

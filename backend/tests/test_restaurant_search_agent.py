@@ -299,7 +299,247 @@ def test_photo_dispatch_never_serializes_local_image_path(
 
     assert result["output"][0]["source_name"] == "commons"
     assert "image_path" not in result["output"][0]
+    assert result["output"][0]["image_url"] == "/images/files/photo.jpg"
     assert "C:\\private\\photo.jpg" not in str(result)
+
+
+def test_agent_returns_photo_results_as_safe_api_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = configure_client(
+        monkeypatch,
+        function_call_response(
+            "search_restaurant_photos",
+            {"query": "vegetarian restaurant in Madrid", "top_k": 1},
+        ),
+        text_response("He encontrado una foto del candidato."),
+    )
+    photo_result = {
+        "image_url": "/images/files/commons-photo.jpg",
+        "source_url": "https://commons.wikimedia.org/wiki/File:commons-photo.jpg",
+        "license_name": "CC BY-SA",
+        "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "Photographer",
+        "restaurant_name": "Example Restaurant",
+        "restaurant_location": "Madrid",
+        "restaurant_cuisine": "vegetarian",
+        "restaurant_source_url": "https://www.openstreetmap.org/node/123",
+        "restaurant_attribution": "© OpenStreetMap contributors",
+        "restaurant_attribution_url": "https://www.openstreetmap.org/copyright",
+    }
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        lambda *args: {"output": [photo_result]},
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Busca restaurantes vegetarianos en Madrid y enséñame fotos.",
+        object(),
+    )
+
+    assert response.photos[0].image_url == "/images/files/commons-photo.jpg"
+    assert response.photos[0].restaurant_name == "Example Restaurant"
+    assert response.photos[0].license_url == photo_result["license_url"]
+    assert "image_path" not in str(client.models.requests[-1]["contents"])
+    assert "MUST call" in client.models.requests[0]["config"].system_instruction
+    function_response = client.models.requests[-1]["contents"][-1].parts[0]
+    assert function_response.function_response.response["output"][0]["image_url"] == (
+        "/images/files/commons-photo.jpg"
+    )
+
+
+def test_agent_filters_photos_to_candidates_and_deduplicates_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = configure_client(
+        monkeypatch,
+        function_call_response(
+            "search_restaurants",
+            {"query": "vegetarian restaurants in Madrid"},
+        ),
+        function_call_response(
+            "search_restaurant_photos",
+            {"query": "vegetarian restaurants in Madrid"},
+        ),
+        text_response("He encontrado una foto del candidato vegetariano."),
+    )
+    matching_photo = {
+        "image_url": "/images/files/green-place.jpg",
+        "source_url": "https://commons.wikimedia.org/wiki/File:green-place.jpg",
+        "restaurant_name": "Restaurante Verde",
+        "restaurant_cuisine": "vegetarian",
+    }
+    wrong_restaurant_photo = {
+        "image_url": "/images/files/casa-mingo.jpg",
+        "source_url": "https://commons.wikimedia.org/wiki/File:casa-mingo.jpg",
+        "restaurant_name": "Casa Mingo",
+        "restaurant_cuisine": "chicken",
+    }
+    duplicate_photo = {
+        **matching_photo,
+        "source_url": "https://commons.wikimedia.org/wiki/File:green-place-copy.jpg",
+    }
+
+    def fake_dispatch(name: str | None, args: Any, session: Any):
+        if name == "search_restaurants":
+            return {
+                "output": {
+                    "results": [
+                        {"name": "Restaurante Verde", "cuisine": "vegetarian"}
+                    ]
+                }
+            }
+        return {
+            "output": [
+                matching_photo,
+                wrong_restaurant_photo,
+                duplicate_photo,
+            ]
+        }
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        fake_dispatch,
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Busca restaurantes vegetarianos en Madrid y enséñame fotos de algunos.",
+        object(),
+    )
+
+    assert len(response.photos) == 1
+    assert response.photos[0].restaurant_name == "Restaurante Verde"
+    assert response.photos[0].restaurant_cuisine == "vegetarian"
+    assert "Casa Mingo" not in str(client.models.requests[-1]["contents"])
+    photo_result = next(
+        part.function_response.response
+        for content in client.models.requests[-1]["contents"]
+        for part in content.parts or []
+        if part.function_response is not None
+        and part.function_response.name == "search_restaurant_photos"
+    )
+    assert len(photo_result["output"]) == 1
+    assert photo_result["output"][0]["restaurant_name"] == "Restaurante Verde"
+
+
+def test_agent_forces_photo_search_when_model_omits_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_client(
+        monkeypatch,
+        function_call_response(
+            "search_restaurants",
+            {"query": "vegetarian restaurants in Madrid"},
+        ),
+        text_response("He encontrado candidatos vegetarianos."),
+    )
+    matching_photo = {
+        "image_url": "/images/files/green-place.jpg",
+        "source_url": "https://commons.wikimedia.org/wiki/File:green-place.jpg",
+        "restaurant_name": "Restaurante Verde",
+        "restaurant_cuisine": "vegetarian",
+    }
+    unrelated_photo = {
+        "image_url": "/images/files/casa-mingo.jpg",
+        "source_url": "https://commons.wikimedia.org/wiki/File:casa-mingo.jpg",
+        "restaurant_name": "Casa Mingo",
+        "restaurant_cuisine": "chicken",
+    }
+    dispatched: list[str | None] = []
+
+    def fake_dispatch(name: str | None, args: Any, session: Any):
+        dispatched.append(name)
+        if name == "search_restaurants":
+            return {
+                "output": {
+                    "results": [{"name": "Restaurante Verde"}],
+                }
+            }
+        return {"output": [unrelated_photo, matching_photo]}
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        fake_dispatch,
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Busca restaurantes vegetarianos en Madrid y enséñame fotos.",
+        object(),
+    )
+
+    assert dispatched == ["search_restaurants", "search_restaurant_photos"]
+    assert [photo.restaurant_name for photo in response.photos] == [
+        "Restaurante Verde"
+    ]
+    assert "No he encontrado fotos" not in response.answer
+
+
+def test_agent_explains_when_no_candidate_photos_are_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_client(
+        monkeypatch,
+        function_call_response(
+            "search_restaurants",
+            {"query": "vegetarian restaurants in Madrid"},
+        ),
+        text_response("He encontrado candidatos vegetarianos."),
+    )
+
+    def fake_dispatch(name: str | None, args: Any, session: Any):
+        if name == "search_restaurants":
+            return {"output": {"results": [{"name": "Restaurante Verde"}]}}
+        return {
+            "output": [
+                {
+                    "image_url": "/images/files/casa-mingo.jpg",
+                    "source_url": (
+                        "https://commons.wikimedia.org/wiki/File:casa-mingo.jpg"
+                    ),
+                    "restaurant_name": "Casa Mingo",
+                    "restaurant_cuisine": "chicken",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        fake_dispatch,
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Busca restaurantes vegetarianos en Madrid y enséñame fotos.",
+        object(),
+    )
+
+    assert response.photos == []
+    assert "No he encontrado fotos indexadas asociadas a los restaurantes candidatos." in (
+        response.answer
+    )
+
+
+def test_agent_leads_with_unavailable_live_data_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_client(
+        monkeypatch,
+        text_response("Puedo buscarte candidatos según los datos disponibles."),
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Dime cuál tiene disponibilidad de mesa esta noche y cuánto cuesta el menú.",
+        object(),
+    )
+
+    assert response.answer.startswith(
+        "No puedo verificar la disponibilidad de mesa esta noche ni "
+        "los precios actuales del menú con las herramientas disponibles."
+    )
 
 
 def test_agent_executes_tool_call_and_returns_model_final_answer(

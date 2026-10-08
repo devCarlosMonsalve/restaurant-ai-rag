@@ -284,7 +284,10 @@ def test_restaurant_search_agent_endpoint_injects_database_session(
     )
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "He encontrado candidatos."}
+    assert response.json() == {
+        "answer": "He encontrado candidatos.",
+        "photos": [],
+    }
     assert calls["query"] == "Busca restaurantes en Madrid"
     assert isinstance(calls["session"], Session)
 

@@ -194,10 +194,27 @@ function declaration or sent as a model argument. Photo results omit local
 The Agent permits at most four Tool call attempts per request, including
 invalid or failed calls. Automatic SDK function execution is disabled. Tool
 errors are returned to the model as explicit error results; Gemini/API failures
-produce an HTTP 502 response instead of a fabricated answer. The Agent returns
-an answer only; it does not add a new retrieval or ranking path, personalized
+produce an HTTP 502 response instead of a fabricated answer. When photo search
+returns matches, the API response includes a `photos` array alongside `answer`.
+Each photo has a safe API-relative `image_url` (for example,
+`/images/files/commons-photo.jpg`) and available source, license, attribution,
+and restaurant metadata. The local `image_path` is never sent to the model or
+returned by the Agent endpoint. Clients can render each `image_url` using the
+API base URL; Postman displays the URL as JSON rather than rendering the image.
+When restaurant and photo search are both used, photos are restricted to names
+present in the restaurant candidates and repeated Commons sources are removed.
+For explicit photo requests, the host reserves a Tool call and performs the
+photo search if the model omits it. If no photos remain after matching them to
+the candidates, the answer says that no associated indexed photos were found.
+
+The Agent does not add a new retrieval or ranking path, personalized
 preferences, workflows, or persistent conversation state. It does not
 introduce LangGraph or MCP.
+
+There are no Tools for live reservation availability or current menu prices.
+For requests that explicitly ask for those facts, the Agent response begins
+with a limitation notice; it may still provide restaurant candidates, but does
+not claim to have verified availability or current prices.
 
 Evaluate the semantic restaurant ranking against known Madrid cuisines,
 features, and one dish-name case. Environment queries are reported for manual
