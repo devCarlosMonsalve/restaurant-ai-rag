@@ -136,6 +136,28 @@ response includes `results`, `evidence_status`, and `evidence_message`; queries
 for unsupported details such as a quiet atmosphere may still show suggestions,
 but are marked as unverified.
 
+## Tool layer
+
+The `app.tools` package exposes the existing retrieval and RAG capabilities as
+thin Tool boundaries:
+
+- `search_restaurants` validates with `OsmRestaurantSearchRequest` and delegates
+  to `search_osm_places_by_text`, returning `OsmRestaurantSearchResponse`
+  including evidence status and message.
+- `search_restaurant_photos` validates with `ImageSearchRequest` and delegates
+  to `search_images_by_text`, returning the existing image results with source,
+  license, and attribution metadata. It searches OSM-linked restaurant photos
+  by default; callers can explicitly select the sample-image corpus.
+- `search_documents` validates with `DocumentSearchRequest` and delegates to
+  `search_document_chunks`, returning ranked document chunks and provenance.
+- `answer_from_documents` validates with `RagQuestionRequest` and delegates to
+  `answer_with_rag`, returning the existing grounded answer and source list.
+
+The host injects the database session; it is not a semantic Tool input. The
+existing API endpoints use these same boundaries. These wrappers add no
+retrieval or generation logic and do not introduce an agent, LangGraph, or MCP
+integration.
+
 Evaluate the semantic restaurant ranking against known Madrid cuisines,
 features, and one dish-name case. Environment queries are reported for manual
 review because OSM does not provide reliable labels for atmosphere:

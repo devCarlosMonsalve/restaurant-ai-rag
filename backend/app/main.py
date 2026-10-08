@@ -6,12 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.document_search import search_document_chunks
-from app.image_search import search_images_by_text
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.models.restaurant import Restaurant
-from app.restaurant_search import search_osm_places_by_text
 from app.schemas import (
     DocumentSearchRequest,
     DocumentSearchResult,
@@ -25,7 +22,12 @@ from app.schemas import (
     RestaurantCreate,
     RestaurantRead,
 )
-from app.rag import answer_with_rag
+from app.tools import (
+    answer_from_documents,
+    search_documents as search_documents_tool,
+    search_restaurant_photos,
+    search_restaurants,
+)
 
 app = FastAPI(title="Restaurant AI API")
 
@@ -105,7 +107,7 @@ def search_osm_restaurants(
     request: OsmRestaurantSearchRequest,
     db: Session = Depends(get_db),
 ) -> OsmRestaurantSearchResponse:
-    return search_osm_places_by_text(
+    return search_restaurants(
         request.query,
         db,
         top_k=request.top_k,
@@ -123,7 +125,7 @@ def search_documents(
     request: DocumentSearchRequest,
     db: Session = Depends(get_db),
 ) -> list[DocumentSearchResult]:
-    return search_document_chunks(request.query, db, top_k=request.top_k)
+    return search_documents_tool(request.query, db, top_k=request.top_k)
 
 
 @app.post(
@@ -135,7 +137,7 @@ def ask_documents(
     request: RagQuestionRequest,
     db: Session = Depends(get_db),
 ) -> RagAnswerResponse:
-    return answer_with_rag(request, db)
+    return answer_from_documents(request.query, db, top_k=request.top_k)
 
 
 @app.post(
@@ -147,13 +149,13 @@ def search_images(
     request: ImageSearchRequest,
     db: Session = Depends(get_db),
 ) -> list[ImageSearchResult]:
-    return search_images_by_text(
+    return search_restaurant_photos(
         request.query,
         db,
         top_k=request.top_k,
-        osm_places_only=request.osm_places_only,
         city=request.city,
         cuisine=request.cuisine,
+        osm_places_only=request.osm_places_only,
     )
 
 

@@ -182,7 +182,7 @@ def test_image_search_endpoint_returns_matches(
         calls["cuisine"] = cuisine
         return expected_results
 
-    monkeypatch.setattr("app.main.search_images_by_text", fake_search)
+    monkeypatch.setattr("app.main.search_restaurant_photos", fake_search)
     response = client.post(
         "/images/search",
         json={
