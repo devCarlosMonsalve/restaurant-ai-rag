@@ -144,21 +144,32 @@ search; `app.application.knowledge` coordinates document search and grounded
 answers. Each use case accepts an existing request schema and database session,
 then delegates to the frozen service without changing its algorithm or result.
 
-The `app.tools` package exposes these use cases through thin Tool boundaries:
+The `app.tools` package exposes these use cases through thin Tool boundaries.
+Their docstrings are the human- and future-LLM-facing descriptions; the
+functions are not yet registered with an Agent or tool-calling framework.
 
-- `search_restaurants` validates with `OsmRestaurantSearchRequest` and delegates
-  to `search_osm_places_by_text`, returning `OsmRestaurantSearchResponse`
-  including evidence status and message.
-- `search_restaurant_photos` validates with `ImageSearchRequest` and delegates
-  to `search_images_by_text`, returning the existing image results with source,
-  license, and attribution metadata. It searches OSM-linked restaurant photos
-  by default; callers can explicitly select the sample-image corpus.
-- `search_documents` validates with `DocumentSearchRequest` and delegates to
-  `search_document_chunks`, returning ranked document chunks and provenance.
-- `answer_from_documents` validates with `RagQuestionRequest` and delegates to
-  `answer_with_rag`, returning the existing grounded answer and source list.
+| Tool | Use when | Inputs | Returns | Does not guarantee |
+| --- | --- | --- | --- | --- |
+| `search_restaurants` | The user wants restaurant candidates. | Natural-language `query`; optional `top_k`, `city`, and exact OSM `cuisine` tag. | Candidate fichas, OSM attributes and source, semantic similarity, `evidence_status`, and `evidence_message`. | A final personalized recommendation, complete/current OSM data, or confirmation of unsupported details. Similarity is not confidence. |
+| `search_restaurant_photos` | The user asks for photos of restaurants or wants to inspect associated imagery. | Natural-language `query`; optional `top_k`, `city`, and exact OSM `cuisine` tag. | Indexed OSM-linked photos with available image source, license, attribution, restaurant metadata, and visual similarity. | That an image is current, depicts current conditions, or proves restaurant suitability. Similarity is not confidence. |
+| `search_documents` | Raw excerpts are needed as evidence for inspection or further synthesis. | `query` and optional `top_k`. | Ranked indexed-document chunks with filename, chunk index, and similarity. | A generated answer, completeness, or freshness of the indexed corpus. |
+| `answer_from_documents` | The user wants a direct answer grounded in indexed documents. | Natural-language `query` and optional `top_k`. | A generated RAG answer and the source chunks used. | Facts beyond the retrieved corpus or independent verification of source accuracy/currentness. |
 
-The host injects the database session; it is not a semantic Tool input. The
+`search_documents` returns raw retrieved excerpts; it does not generate an
+answer. `answer_from_documents` performs retrieval plus grounded answer
+generation. Restaurant Tools serve restaurant discovery and associated images,
+not document Q&A. Photo search is fixed to the OSM-linked restaurant corpus;
+the Tool does not expose `osm_places_only` as an Agent choice. The HTTP image
+search endpoint retains its existing corpus-selection behavior.
+
+The request schema validates query and `top_k` bounds. The host injects the
+database session; it is not a semantic Tool input. `search_restaurants` also
+supports optional city and cuisine filters; the other Tools have only the
+filters shown above. Search similarity values are ranking signals, not
+confidence scores. OSM feature evidence may be incomplete or stale; unsupported
+details can remain unverified. Kosher evidence is subject to the documented
+freshness policy but its certifier is not independently validated.
+
 FastAPI routes in `app.main` and the Tool adapters are separate entry points
 that call the same application use cases. The existing domain policies,
 SQLAlchemy models, database access, embedding providers, and external-data

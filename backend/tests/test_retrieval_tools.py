@@ -1,3 +1,4 @@
+from inspect import signature
 from unittest.mock import sentinel
 
 import pytest
@@ -56,34 +57,8 @@ def test_search_restaurant_photos_delegates_to_existing_image_search(
     }
 
 
-def test_search_restaurant_photos_can_preserve_sample_corpus_mode(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls = {}
-
-    def fake_search(request, session):
-        calls.update(
-            query=request.query,
-            session=session,
-            top_k=request.top_k,
-            city=request.city,
-            cuisine=request.cuisine,
-            osm_places_only=request.osm_places_only,
-        )
-        return []
-
-    monkeypatch.setattr(
-        "app.tools.restaurant_photos.search_restaurant_photos_use_case",
-        fake_search,
-    )
-
-    search_restaurant_photos(
-        "pasta",
-        sentinel.session,
-        osm_places_only=False,
-    )
-
-    assert calls["osm_places_only"] is False
+def test_search_restaurant_photos_does_not_expose_corpus_selection() -> None:
+    assert "osm_places_only" not in signature(search_restaurant_photos).parameters
 
 
 def test_search_documents_delegates_to_existing_document_retrieval(
