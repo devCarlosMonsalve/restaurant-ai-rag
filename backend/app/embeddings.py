@@ -44,15 +44,22 @@ def _embed_contents(contents: Sequence[str]) -> list[list[float]]:
     with genai.Client(api_key=api_key.get_secret_value()) as client:
         response = client.models.embed_content(
             model=GEMINI_EMBEDDING_MODEL,
-            contents=list(contents),
+            contents=[
+                types.UserContent(parts=[types.Part(text=content)])
+                for content in contents
+            ],
             config=types.EmbedContentConfig(
                 output_dimensionality=EMBEDDING_DIMENSIONS,
             ),
         )
 
     embeddings = response.embeddings
-    if embeddings is None or len(embeddings) != len(contents):
-        raise RuntimeError("Gemini returned an unexpected number of embeddings")
+    if embeddings is None:
+        raise RuntimeError("Gemini returned no embeddings")
+    if len(embeddings) != len(contents):
+        raise RuntimeError(
+            f"Gemini returned {len(embeddings)} embeddings for {len(contents)} inputs"
+        )
 
     vectors: list[list[float]] = []
     for embedding in embeddings:

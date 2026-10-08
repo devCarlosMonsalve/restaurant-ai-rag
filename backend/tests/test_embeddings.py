@@ -51,7 +51,10 @@ def test_embed_document_chunks_formats_and_returns_vectors(
     assert len(vectors[0]) == embeddings.EMBEDDING_DIMENSIONS
     assert client.api_key == "test-api-key"
     assert client.models.request["model"] == embeddings.GEMINI_EMBEDDING_MODEL
-    assert client.models.request["contents"] == [
+    content_texts = [
+        content.parts[0].text for content in client.models.request["contents"]
+    ]
+    assert content_texts == [
         "title: Menu | text: Chunk one",
         "title: Menu | text: Chunk two",
     ]
@@ -69,9 +72,9 @@ def test_embed_search_query_uses_retrieval_prefix(
     vector = embeddings.embed_search_query("quiet Italian restaurant")
 
     assert len(vector) == embeddings.EMBEDDING_DIMENSIONS
-    assert client.models.request["contents"] == [
+    assert client.models.request["contents"][0].parts[0].text == (
         "task: search result | query: quiet Italian restaurant"
-    ]
+    )
 
 
 def test_embedding_requires_a_gemini_api_key(

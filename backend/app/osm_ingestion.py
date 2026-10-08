@@ -25,19 +25,30 @@ def upsert_osm_place(
             location=restaurant.location,
             latitude=restaurant.latitude,
             longitude=restaurant.longitude,
+            features=list(restaurant.features),
             wikimedia_commons=restaurant.wikimedia_commons,
             source_url=restaurant.source_url,
         )
         session.add(place)
     else:
+        searchable_metadata_changed = any(
+            getattr(place, field) != getattr(restaurant, field)
+            for field in ("name", "city", "cuisine", "location")
+        )
+        searchable_metadata_changed = searchable_metadata_changed or (
+            (place.features or []) != list(restaurant.features)
+        )
         place.name = restaurant.name
         place.city = restaurant.city
         place.cuisine = restaurant.cuisine
         place.location = restaurant.location
         place.latitude = restaurant.latitude
         place.longitude = restaurant.longitude
+        place.features = list(restaurant.features)
         place.wikimedia_commons = restaurant.wikimedia_commons
         place.source_url = restaurant.source_url
+        if searchable_metadata_changed:
+            place.embedding = None
 
     session.flush()
     return place
