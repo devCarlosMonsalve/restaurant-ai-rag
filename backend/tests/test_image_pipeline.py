@@ -1,4 +1,7 @@
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 import torch
@@ -13,7 +16,11 @@ from app.image_embeddings import (
     embed_text_for_image_search,
 )
 from app.image_ingestion import ImageSourceMetadata, ingest_image_to_database
-from app.image_search import _metadata_match_count, _tokens
+from app.image_search import (
+    _metadata_match_count,
+    _tokens,
+    search_images_by_text,
+)
 from app.models.image_embedding import ImageEmbedding
 from app.open_data_sources import OSMRestaurant
 from app.osm_ingestion import upsert_osm_place
@@ -212,6 +219,97 @@ def test_image_search_endpoint_returns_matches(
     }
 
 
+def test_osm_image_search_requires_all_requested_feature_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidates = [
+        _image_search_candidate(
+            "Verified Restaurant",
+            [
+                "Mesas al aire libre: disponible",
+                "Acceso en silla de ruedas: accesible",
+            ],
+        ),
+        _image_search_candidate(
+            "Limited Access Restaurant",
+            [
+                "Mesas al aire libre: disponible",
+                "Acceso en silla de ruedas: accesibilidad limitada",
+            ],
+        ),
+        _image_search_candidate(
+            "Missing Terrace Restaurant",
+            ["Acceso en silla de ruedas: accesible"],
+        ),
+    ]
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, statement):
+            self.calls += 1
+            return [] if self.calls == 1 else candidates
+
+    monkeypatch.setattr(
+        "app.image_search.embed_text_for_image_search",
+        lambda _: [0.0] * 512,
+    )
+
+    results = search_images_by_text(
+        "terraza y entrada accesible sin escalones",
+        FakeSession(),
+        osm_places_only=True,
+    )
+
+    assert [result.restaurant_name for result in results] == ["Verified Restaurant"]
+
+
+def test_osm_image_search_rejects_stale_kosher_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checked_today = datetime.now(timezone.utc).date().isoformat()
+    candidates = [
+        _image_search_candidate(
+            "Current Kosher Restaurant",
+            [
+                "Comida kosher: disponible",
+                f"Última revisión kosher: {checked_today}",
+            ],
+        ),
+        _image_search_candidate(
+            "Stale Kosher Restaurant",
+            [
+                "Comida kosher: disponible",
+                "Última revisión kosher: 2020-01-01",
+            ],
+        ),
+    ]
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, statement):
+            self.calls += 1
+            return [] if self.calls == 1 else candidates
+
+    monkeypatch.setattr(
+        "app.image_search.embed_text_for_image_search",
+        lambda _: [0.0] * 512,
+    )
+
+    results = search_images_by_text(
+        "cocina kosher",
+        FakeSession(),
+        osm_places_only=True,
+    )
+
+    assert [result.restaurant_name for result in results] == [
+        "Current Kosher Restaurant"
+    ]
+
+
 def test_metadata_search_matches_accents_and_important_spanish_terms() -> None:
     query_tokens = _tokens("Cocido madrileño en La Bola")
 
@@ -249,3 +347,27 @@ def test_image_search_endpoint_validates_query_and_top_k(
     assert excessive_top_k_response.status_code == 422
     assert excessive_city_response.status_code == 422
     assert excessive_cuisine_response.status_code == 422
+
+
+def _image_search_candidate(
+    restaurant_name: str,
+    features: list[str],
+) -> tuple[SimpleNamespace, SimpleNamespace, float]:
+    place = SimpleNamespace(
+        id=uuid4(),
+        name=restaurant_name,
+        location=None,
+        cuisine=None,
+        features=features,
+        source_url="https://www.openstreetmap.org/node/1",
+    )
+    image = SimpleNamespace(
+        id=uuid4(),
+        source_name=f"{restaurant_name}.jpg",
+        image_path=f"C:/images/{restaurant_name}.jpg",
+        source_url=None,
+        license_name=None,
+        license_url=None,
+        attribution=None,
+    )
+    return image, place, 0.1

@@ -97,6 +97,14 @@ def test_kosher_search_requires_a_recent_check_date() -> None:
         requirement,
         today=date(2026, 10, 8),
     )
+    assert not matches_feature_requirements(
+        [
+            "Comida kosher: disponible",
+            "Última revisión kosher: fecha-desconocida",
+        ],
+        requirement,
+        today=date(2026, 10, 8),
+    )
 
 
 def test_step_free_access_requires_full_wheelchair_access_tag() -> None:
@@ -192,6 +200,56 @@ def test_stale_kosher_data_is_not_returned_as_verified(
     assert response.results == []
     assert response.evidence_status == "stale_evidence"
     assert "fecha de revisión vigente" in response.evidence_message
+
+
+def test_unverified_ambiance_keeps_semantic_results_but_warns(
+    monkeypatch,
+) -> None:
+    place = _place("Quiet Restaurant", [])
+
+    class FakeSession:
+        def execute(self, statement):
+            return [(place, 0.2)]
+
+    monkeypatch.setattr(
+        "app.restaurant_search.embed_search_query",
+        lambda _: [0.0] * 768,
+    )
+
+    response = search_osm_places_by_text(
+        "cena romantica en un lugar tranquilo",
+        FakeSession(),
+    )
+
+    assert [result.name for result in response.results] == ["Quiet Restaurant"]
+    assert response.evidence_status == "unverified"
+    assert "ambiente del restaurante" in response.evidence_message
+
+
+def test_partial_evidence_warns_about_unverified_ambiance(
+    monkeypatch,
+) -> None:
+    place = _place("Vegan Restaurant", ["Opciones veganas: disponible"])
+
+    class FakeSession:
+        def execute(self, statement):
+            return [(place, 0.2)]
+
+    monkeypatch.setattr(
+        "app.restaurant_search.embed_search_query",
+        lambda _: [0.0] * 768,
+    )
+
+    response = search_osm_places_by_text(
+        "opciones veganas en un lugar tranquilo",
+        FakeSession(),
+    )
+
+    assert [result.name for result in response.results] == ["Vegan Restaurant"]
+    assert response.evidence_status == "partial"
+    assert "no podemos confirmar: el ambiente del restaurante" in (
+        response.evidence_message
+    )
 
 
 def test_step_free_access_is_confirmed_with_osm_wheelchair_yes(
