@@ -40,7 +40,6 @@ OSM_FEATURE_TAGS = {
     "diet:halal": "Comida halal",
     "diet:kosher": "Comida kosher",
     "wheelchair": "Acceso en silla de ruedas",
-    "wheelchair:description": "Accesibilidad",
     "air_conditioning": "Aire acondicionado",
     "live_music": "Música en vivo",
     "internet_access": "Acceso a internet",
@@ -134,13 +133,20 @@ def _extract_restaurant_features(tags: dict[str, str]) -> tuple[str, ...]:
                 if normalized_value == "yes"
                 else "accesibilidad limitada"
             )
-        elif key == "wheelchair:description":
-            description = value[:300]
         else:
             if normalized_value not in _POSITIVE_FEATURE_VALUES:
                 continue
             description = _FEATURE_VALUE_LABELS[normalized_value]
         features.append(f"{label}: {description}")
+    if any(feature.startswith("Comida kosher:") for feature in features):
+        if certifier := tags.get("diet:kosher:certifier"):
+            features.append(
+                f"Certificador kosher: {' '.join(certifier.split())[:255]}"
+            )
+        if check_date := tags.get("check_date:diet:kosher"):
+            features.append(
+                f"Última revisión kosher: {' '.join(check_date.split())[:32]}"
+            )
     return tuple(features)
 
 

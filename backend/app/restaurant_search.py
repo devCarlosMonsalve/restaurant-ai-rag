@@ -5,7 +5,13 @@ from app.embeddings import embed_search_query
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.place_filters import cuisine_filter
-from app.schemas import OsmRestaurantSearchResult
+from app.schemas import OsmRestaurantSearchResponse, OsmRestaurantSearchResult
+from app.search_evidence import (
+    SearchEvidenceRequest,
+    detect_search_evidence,
+    feature_requirements_clause,
+    matches_feature_requirements,
+)
 
 OSM_ATTRIBUTION = "© OpenStreetMap contributors"
 OSM_ATTRIBUTION_URL = "https://www.openstreetmap.org/copyright"
@@ -18,11 +24,12 @@ def search_osm_places_by_text(
     top_k: int = 12,
     city: str | None = None,
     cuisine: str | None = None,
-) -> list[OsmRestaurantSearchResult]:
+) -> OsmRestaurantSearchResponse:
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
 
     query_embedding = embed_search_query(query)
+    evidence_request = detect_search_evidence(query)
     cosine_distance = OsmPlace.embedding.cosine_distance(query_embedding)
     has_photos = (
         select(ImageEmbedding.id)
@@ -33,7 +40,6 @@ def search_osm_places_by_text(
         select(OsmPlace, cosine_distance)
         .where(OsmPlace.embedding.is_not(None), ~has_photos)
         .order_by(cosine_distance)
-        .limit(top_k)
     )
     if city:
         statement = statement.where(
@@ -42,7 +48,18 @@ def search_osm_places_by_text(
     if cuisine:
         statement = statement.where(cuisine_filter(cuisine))
 
-    return [
+    if evidence_request.feature_requirements:
+        statement = statement.where(
+            feature_requirements_clause(
+                OsmPlace.features,
+                evidence_request.feature_requirements,
+            )
+        )
+    else:
+        statement = statement.limit(top_k)
+
+    ranked_places = session.execute(statement)
+    results = [
         OsmRestaurantSearchResult(
             id=place.id,
             name=place.name,
@@ -57,5 +74,80 @@ def search_osm_places_by_text(
             attribution_url=OSM_ATTRIBUTION_URL,
             similarity=1.0 - float(distance),
         )
-        for place, distance in session.execute(statement)
+        for place, distance in ranked_places
+        if matches_feature_requirements(
+            place.features or [],
+            evidence_request.feature_requirements,
+        )
+    ][:top_k]
+    evidence_status, evidence_message = _evidence_summary(
+        evidence_request,
+        len(results),
+    )
+    return OsmRestaurantSearchResponse(
+        results=results,
+        evidence_status=evidence_status,
+        evidence_message=evidence_message,
+    )
+
+
+def _evidence_summary(
+    evidence_request: SearchEvidenceRequest,
+    result_count: int,
+) -> tuple[str, str | None]:
+    feature_labels = [
+        requirement.label for requirement in evidence_request.feature_requirements
     ]
+    verified_text = ", ".join(feature_labels)
+    unverified_text = ", ".join(evidence_request.unverified_requirements)
+
+    if not feature_labels and not unverified_text:
+        return "not_required", None
+    if feature_labels and result_count == 0:
+        message = (
+            f"No encontramos fichas con etiquetas OSM que confirmen: "
+            f"{verified_text}. No mostramos coincidencias sin evidencia como "
+            "resultados confirmados."
+        )
+        if unverified_text:
+            message += f" Tampoco se puede verificar: {unverified_text}."
+        if _requires_step_free_access(evidence_request):
+            message += (
+                " No encontramos lugares con wheelchair=yes, la etiqueta OSM "
+                "que indica entrada sin escalones."
+            )
+        return "no_evidence", message
+    if feature_labels and unverified_text:
+        return (
+            "partial",
+            f"Las fichas mostradas tienen etiquetas OSM para {verified_text}, "
+            f"pero no podemos confirmar: {unverified_text}. Verifica ese "
+            "requisito directamente con el restaurante.",
+        )
+    if feature_labels:
+        message = (
+            f"Las fichas mostradas tienen etiquetas OSM para: {verified_text}. "
+            "Esto no confirma otras condiciones no etiquetadas."
+        )
+        if _requires_step_free_access(evidence_request):
+            message += (
+                " Según la convención OSM, wheelchair=yes indica entrada y "
+                "salas sin escalones; confirma que el dato siga vigente."
+            )
+        return "verified", message
+    return (
+        "unverified",
+        f"OpenStreetMap no aporta datos fiables para confirmar {unverified_text}. "
+        "Los resultados semánticos son sugerencias; verifica ese requisito "
+        "directamente con el restaurante.",
+    )
+
+
+def _requires_step_free_access(
+    evidence_request: SearchEvidenceRequest,
+) -> bool:
+    return any(
+        requirement.label == "Acceso en silla de ruedas"
+        and requirement.value == "accesible"
+        for requirement in evidence_request.feature_requirements
+    )

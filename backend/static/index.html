@@ -31,6 +31,7 @@
       button:disabled { opacity: .6; cursor: wait; }
       .hint, #status { color: #74766f; font-size: .88rem; }
       #status { min-height: 24px; margin: 18px 0; }
+      #evidence-status { border-left: 3px solid #b98730; padding-left: 12px; }
       .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 20px; padding-bottom: 44px; }
       .card { overflow: hidden; border: 1px solid #e4e1d8; border-radius: 16px; background: white; box-shadow: 0 8px 24px #272a2010; }
       .card img { display: block; width: 100%; height: 230px; background: #ecebe5; object-fit: cover; }
@@ -74,6 +75,7 @@
         <div class="hint">Las fotos se ordenan con CLIP y datos del lugar; las fichas sin foto usan búsqueda semántica de nombre, cocina y ubicación. Las puntuaciones son similitudes, no niveles de confianza.</div>
       </header>
       <div id="status" role="status" aria-live="polite">Prueba: «Café histórico en Madrid»</div>
+      <p id="evidence-status" class="hint" role="status" aria-live="polite" hidden></p>
       <section id="results" class="grid" aria-label="Resultados"></section>
       <section id="no-photo-section" class="no-photo-results" aria-label="Restaurantes sin foto" hidden>
         <h2>Restaurantes sin foto disponible</h2>
@@ -92,6 +94,7 @@
       const cuisineSelect = document.querySelector("#cuisine");
       const submit = document.querySelector("#submit");
       const status = document.querySelector("#status");
+      const evidenceStatus = document.querySelector("#evidence-status");
       const results = document.querySelector("#results");
       const noPhotoSection = document.querySelector("#no-photo-section");
       const noPhotoResults = document.querySelector("#no-photo-results");
@@ -204,6 +207,8 @@
         results.replaceChildren();
         noPhotoResults.replaceChildren();
         noPhotoSection.hidden = true;
+        evidenceStatus.hidden = true;
+        evidenceStatus.textContent = "";
         try {
           const requestOptions = {
             method: "POST",
@@ -235,24 +240,39 @@
             const detail = await failedResponse.text();
             throw new Error(`La búsqueda falló (${failedResponse.status}): ${detail}`);
           }
-          const [matches, noPhotoPlaces] = await Promise.all([
+          const [matches, restaurantSearch] = await Promise.all([
             imageResponse.json(),
             restaurantResponse.json()
           ]);
+          const noPhotoPlaces = restaurantSearch.results;
+          if (restaurantSearch.evidence_message) {
+            evidenceStatus.textContent = restaurantSearch.evidence_message;
+            evidenceStatus.hidden = false;
+          }
           results.innerHTML = matches.map(renderCard).join("");
           if (noPhotoPlaces.length > 0) {
             noPhotoResults.innerHTML = noPhotoPlaces.map(renderPlaceCard).join("");
             noPhotoSection.hidden = false;
           }
-          const photoStatus = matches.length === 0
+          const hasTaggedFeatureEvidence = ["verified", "partial"].includes(
+            restaurantSearch.evidence_status
+          );
+          const photoStatus = hasTaggedFeatureEvidence
+            ? matches.length === 0
+              ? "No hay fotos de lugares con las características etiquetadas solicitadas."
+              : `${matches.length} fotos de lugares con características etiquetadas en ${citySelect.value}.`
+            : matches.length === 0
             ? "No hay fotos de restaurantes que coincidan."
             : cuisineSelect.value
             ? `${matches.length} fotos de cocina ${cuisineLabels[cuisineSelect.value] || cuisineSelect.value} en ${citySelect.value}.`
             : matches[0].metadata_match_count > 0
             ? `${matches.length} fotos con coincidencia textual.`
             : `No encontramos coincidencias textuales en ${citySelect.value}. Mostramos ${matches.length} fotos visualmente cercanas como sugerencias.`;
+          const noPhotoSummary = hasTaggedFeatureEvidence
+            ? `${noPhotoPlaces.length} fichas sin foto con etiquetas OSM coincidentes.`
+            : `${noPhotoPlaces.length} restaurantes sin foto encontrados semánticamente.`;
           status.textContent = noPhotoPlaces.length > 0
-            ? `${photoStatus} Además, ${noPhotoPlaces.length} restaurantes sin foto encontrados semánticamente.`
+            ? `${photoStatus} Además, ${noPhotoSummary}`
             : `${photoStatus} No hay restaurantes sin foto que coincidan semánticamente.`;
         } catch (error) {
           status.textContent = error.message;

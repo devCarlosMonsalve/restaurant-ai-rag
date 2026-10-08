@@ -1,0 +1,167 @@
+{
+  "source_cases": "madrid_holdout_queries.json",
+  "review_mode": "manual",
+  "reviewed_result_depth": 3,
+  "judgments": [
+    {
+      "query": "un sitio donde cenar sentado al fresco",
+      "intent": "mesas al aire libre",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres primeros resultados tienen mesas al aire libre etiquetadas en OSM."
+    },
+    {
+      "query": "mesa afuera para tomar algo",
+      "intent": "mesas al aire libre",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres primeros resultados tienen mesas al aire libre etiquetadas en OSM."
+    },
+    {
+      "query": "comer en una terraza con amigos",
+      "intent": "mesas al aire libre",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres primeros resultados tienen mesas al aire libre etiquetadas en OSM."
+    },
+    {
+      "query": "opciones de comida vegana",
+      "intent": "opciones veganas",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen opciones veganas etiquetadas en OSM."
+    },
+    {
+      "query": "un menu totalmente vegano",
+      "intent": "opciones veganas; el catalogo solo contiene etiquetas OSM, no menus",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen la etiqueta de opciones veganas exclusivas; OSM no sustituye una comprobación del menú vigente."
+    },
+    {
+      "query": "alternativas vegetarianas para almorzar",
+      "intent": "opciones vegetarianas",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen opciones vegetarianas etiquetadas en OSM."
+    },
+    {
+      "query": "platos aptos para celiacos",
+      "intent": "opciones sin gluten",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen opciones sin gluten etiquetadas; el primer resultado anterior sin esa etiqueta dejó de aparecer."
+    },
+    {
+      "query": "restaurante donde acepten silla de ruedas",
+      "intent": "acceso en silla de ruedas; comprobar limitaciones declaradas",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados indican acceso en silla de ruedas como accesible en OSM."
+    },
+    {
+      "query": "entrada accesible sin escalones",
+      "intent": "accesibilidad sin escalones; respaldada por wheelchair=yes en OSM",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen wheelchair=yes; la convención OSM define esta etiqueta como entrada y salas sin escalones. Confirma que los datos sigan vigentes."
+    },
+    {
+      "query": "local climatizado para los dias de calor",
+      "intent": "aire acondicionado",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen aire acondicionado etiquetado en OSM."
+    },
+    {
+      "query": "un lugar con wifi para trabajar",
+      "intent": "acceso a internet",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen Wi-Fi etiquetado en OSM."
+    },
+    {
+      "query": "pedir comida para recoger",
+      "intent": "comida para llevar",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen comida para llevar etiquetada en OSM."
+    },
+    {
+      "query": "que me traigan la cena a domicilio",
+      "intent": "reparto a domicilio",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen reparto a domicilio etiquetado en OSM."
+    },
+    {
+      "query": "un restaurante donde pueda reservar mesa",
+      "intent": "reservas",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen reservas etiquetadas en OSM; los resultados anteriores basados solo en el nombre desaparecieron."
+    },
+    {
+      "query": "comida halal",
+      "intent": "comida halal",
+      "evidence_status": "verified",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres resultados tienen comida halal etiquetada en OSM."
+    },
+    {
+      "query": "cocina kosher",
+      "intent": "comida kosher",
+      "evidence_status": "no_evidence",
+      "judgment": "no_evidence",
+      "reviewed_result_count": 0,
+      "note": "No hay fichas con etiqueta kosher; es más seguro mostrar cero resultados confirmados que devolver coincidencias semánticas sin evidencia."
+    },
+    {
+      "query": "restaurante italiano de pasta",
+      "intent": "cocina italiana",
+      "evidence_status": "not_required",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres primeros resultados declaran cocina italiana y sus nombres se relacionan con pasta."
+    },
+    {
+      "query": "tacos mexicanos",
+      "intent": "cocina mexicana",
+      "evidence_status": "not_required",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los tres primeros resultados declaran cocina mexicana y corresponden a taquerías."
+    },
+    {
+      "query": "un sitio para hacer brunch y desayunar",
+      "intent": "brunch o desayuno",
+      "evidence_status": "not_required",
+      "judgment": "relevant",
+      "reviewed_result_count": 3,
+      "note": "Los dos primeros tienen cocina breakfast; el tercero incluye brunch en el nombre, sin etiqueta de cocina."
+    },
+    {
+      "query": "cena romantica en un lugar tranquilo",
+      "intent": "ambiente romantico y tranquilo; no hay etiquetas OSM directas",
+      "evidence_status": "unverified",
+      "judgment": "unverified",
+      "reviewed_result_count": 3,
+      "note": "Los resultados son sugerencias semánticas sin atributos OSM que confirmen el ambiente."
+    }
+  ]
+}

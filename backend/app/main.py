@@ -19,7 +19,7 @@ from app.schemas import (
     ImageSearchResult,
     OsmPlaceRead,
     OsmRestaurantSearchRequest,
-    OsmRestaurantSearchResult,
+    OsmRestaurantSearchResponse,
     RagAnswerResponse,
     RagQuestionRequest,
     RestaurantCreate,
@@ -98,13 +98,13 @@ def list_osm_places(db: Session = Depends(get_db)) -> list[OsmPlaceRead]:
 
 @app.post(
     "/restaurants/osm/search",
-    response_model=list[OsmRestaurantSearchResult],
+    response_model=OsmRestaurantSearchResponse,
     tags=["restaurants"],
 )
 def search_osm_restaurants(
     request: OsmRestaurantSearchRequest,
     db: Session = Depends(get_db),
-) -> list[OsmRestaurantSearchResult]:
+) -> OsmRestaurantSearchResponse:
     return search_osm_places_by_text(
         request.query,
         db,

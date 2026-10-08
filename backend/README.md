@@ -119,4 +119,39 @@ with optional city and cuisine filters. Its similarity score is independent of
 the CLIP photo score. Explicitly tagged OSM attributes such as outdoor seating,
 diet options, wheelchair access, air conditioning, and reservations are included
 in the metadata text. Missing or negative tags are not treated as available
-features.
+features. Free-text `wheelchair:description` notes are not used as positive
+features. Per the
+[OSM wheelchair tagging guide](https://wiki.openstreetmap.org/wiki/Key:wheelchair),
+`wheelchair=yes` denotes step-free entry and rooms; the interface still advises
+users to confirm that community-maintained data is current. Kosher certifier
+and check-date tags are shown when OSM provides them, but are not independently
+verified by the application. The current Madrid OSM snapshot has no
+`diet:kosher`-tagged restaurants, so those searches deliberately return no
+verified matches instead of inferring certification.
+For searches that explicitly request supported features, photo and no-photo
+results are restricted to places with matching OSM tags. The semantic search
+response includes `results`, `evidence_status`, and `evidence_message`; queries
+for unsupported details such as a quiet atmosphere may still show suggestions,
+but are marked as unverified.
+
+Evaluate the semantic restaurant ranking against known Madrid cuisines,
+features, and one dish-name case. Environment queries are reported for manual
+review because OSM does not provide reliable labels for atmosphere:
+
+```powershell
+.\.venv\Scripts\python.exe evaluate_restaurant_search.py --top-k 5
+```
+
+The evaluator reports Hit@1, Hit@3, MRR@K, and Precision@3 for feature cases.
+It does not apply a similarity threshold.
+
+To inspect a separate set of novel queries without using them as labeled
+benchmark cases, run:
+
+```powershell
+.\.venv\Scripts\python.exe evaluate_restaurant_search.py --cases .\data\restaurant_evaluation\madrid_holdout_queries.json --top-k 5
+```
+
+This prints the top results with their OSM cuisine and feature attributes plus
+their evidence status for manual acceptance review; it does not calculate
+ranking metrics for this set.

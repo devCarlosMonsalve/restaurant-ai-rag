@@ -1,0 +1,142 @@
+[
+  {
+    "query": "un sitio donde cenar sentado al fresco",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "mesas al aire libre",
+    "review_only": true
+  },
+  {
+    "query": "mesa afuera para tomar algo",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "mesas al aire libre",
+    "review_only": true
+  },
+  {
+    "query": "comer en una terraza con amigos",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "mesas al aire libre",
+    "review_only": true
+  },
+  {
+    "query": "opciones de comida vegana",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "opciones veganas",
+    "review_only": true
+  },
+  {
+    "query": "un menu totalmente vegano",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "opciones veganas; el catalogo solo contiene etiquetas OSM, no menus",
+    "review_only": true
+  },
+  {
+    "query": "alternativas vegetarianas para almorzar",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "opciones vegetarianas",
+    "review_only": true
+  },
+  {
+    "query": "platos aptos para celiacos",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "opciones sin gluten",
+    "review_only": true
+  },
+  {
+    "query": "restaurante donde acepten silla de ruedas",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "acceso en silla de ruedas; comprobar limitaciones declaradas",
+    "review_only": true
+  },
+  {
+    "query": "entrada accesible sin escalones",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "accesibilidad sin escalones; respaldada por wheelchair=yes en OSM",
+    "review_only": true
+  },
+  {
+    "query": "local climatizado para los dias de calor",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "aire acondicionado",
+    "review_only": true
+  },
+  {
+    "query": "un lugar con wifi para trabajar",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "acceso a internet",
+    "review_only": true
+  },
+  {
+    "query": "pedir comida para recoger",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "comida para llevar",
+    "review_only": true
+  },
+  {
+    "query": "que me traigan la cena a domicilio",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "reparto a domicilio",
+    "review_only": true
+  },
+  {
+    "query": "un restaurante donde pueda reservar mesa",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "reservas",
+    "review_only": true
+  },
+  {
+    "query": "comida halal",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "comida halal",
+    "review_only": true
+  },
+  {
+    "query": "cocina kosher",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "comida kosher",
+    "review_only": true
+  },
+  {
+    "query": "restaurante italiano de pasta",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "cocina italiana",
+    "review_only": true
+  },
+  {
+    "query": "tacos mexicanos",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "cocina mexicana",
+    "review_only": true
+  },
+  {
+    "query": "un sitio para hacer brunch y desayunar",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "brunch o desayuno",
+    "review_only": true
+  },
+  {
+    "query": "cena romantica en un lugar tranquilo",
+    "city": "Madrid",
+    "category": "manual_review",
+    "intent": "ambiente romantico y tranquilo; no hay etiquetas OSM directas",
+    "review_only": true
+  }
+]

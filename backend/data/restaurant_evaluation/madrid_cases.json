@@ -1,0 +1,107 @@
+[
+  {
+    "query": "comer al aire libre",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Mesas al aire libre:"
+  },
+  {
+    "query": "terraza para comer",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Mesas al aire libre:"
+  },
+  {
+    "query": "opciones veganas",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Opciones veganas:"
+  },
+  {
+    "query": "restaurante vegano",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Opciones veganas:"
+  },
+  {
+    "query": "comida vegetariana",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Opciones vegetarianas:"
+  },
+  {
+    "query": "comida sin gluten",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Opciones sin gluten:"
+  },
+  {
+    "query": "restaurante accesible en silla de ruedas",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Acceso en silla de ruedas: accesible"
+  },
+  {
+    "query": "restaurante con aire acondicionado",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Aire acondicionado:"
+  },
+  {
+    "query": "comida para llevar",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Comida para llevar:"
+  },
+  {
+    "query": "reparto a domicilio",
+    "city": "Madrid",
+    "category": "feature",
+    "expected_feature_prefix": "Reparto a domicilio:"
+  },
+  {
+    "query": "cocido madrileño",
+    "city": "Madrid",
+    "category": "dish",
+    "expected_name_contains": "cocido"
+  },
+  {
+    "query": "comida mexicana",
+    "city": "Madrid",
+    "cuisine": "mexican",
+    "category": "cuisine",
+    "expected_cuisine": "mexican"
+  },
+  {
+    "query": "tapas españolas",
+    "city": "Madrid",
+    "cuisine": "tapas",
+    "category": "cuisine",
+    "expected_cuisine": "tapas"
+  },
+  {
+    "query": "pizza italiana",
+    "city": "Madrid",
+    "cuisine": "italian",
+    "category": "cuisine",
+    "expected_cuisine": "italian"
+  },
+  {
+    "query": "brunch para desayunar",
+    "city": "Madrid",
+    "category": "name",
+    "expected_name_contains": "brunch"
+  },
+  {
+    "query": "restaurante tranquilo para cenar",
+    "city": "Madrid",
+    "category": "manual_review",
+    "review_only": true
+  },
+  {
+    "query": "cena romántica con luz tenue",
+    "city": "Madrid",
+    "category": "manual_review",
+    "review_only": true
+  }
+]

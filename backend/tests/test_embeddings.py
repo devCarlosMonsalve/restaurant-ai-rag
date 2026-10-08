@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from google.genai.errors import ServerError
 from pydantic import SecretStr
 
 from app import embeddings
@@ -75,6 +76,33 @@ def test_embed_search_query_uses_retrieval_prefix(
     assert client.models.request["contents"][0].parts[0].text == (
         "task: search result | query: quiet Italian restaurant"
     )
+
+
+def test_embedding_retries_transient_server_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("test-api-key"))
+    client = FakeClient(api_key="test-api-key")
+    attempts = 0
+    fake_models = FakeModels()
+    embed_content = fake_models.embed_content
+
+    def flaky_embed_content(**request: object) -> SimpleNamespace:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ServerError(503, {"status": "UNAVAILABLE"})
+        return embed_content(**request)
+
+    fake_models.embed_content = flaky_embed_content
+    client.models = fake_models
+    monkeypatch.setattr(embeddings.genai, "Client", lambda **kwargs: client)
+    monkeypatch.setattr(embeddings.time, "sleep", lambda _: None)
+
+    vectors = embeddings.embed_search_query("vegetarian restaurant")
+
+    assert len(vectors) == embeddings.EMBEDDING_DIMENSIONS
+    assert attempts == 2
 
 
 def test_embedding_requires_a_gemini_api_key(

@@ -9,6 +9,11 @@ from app.image_embeddings import embed_text_for_image_search
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.place_filters import cuisine_filter
+from app.search_evidence import (
+    detect_search_evidence,
+    feature_requirements_clause,
+    matches_feature_requirements,
+)
 from app.schemas import ImageSearchResult
 
 _STOPWORDS = {
@@ -110,6 +115,7 @@ def search_images_by_text(
 
     query_embedding = embed_text_for_image_search(query)
     query_tokens = _tokens(query)
+    evidence_request = detect_search_evidence(query)
     cosine_distance = ImageEmbedding.embedding.cosine_distance(query_embedding)
     metadata_statement = (
         select(
@@ -126,11 +132,17 @@ def search_images_by_text(
         select(ImageEmbedding, OsmPlace, cosine_distance)
         .outerjoin(OsmPlace, ImageEmbedding.osm_place_id == OsmPlace.id)
         .order_by(cosine_distance)
-        .limit(min(100, max(top_k, top_k * 5)))
     )
     if osm_places_only:
         metadata_statement = metadata_statement.where(OsmPlace.id.is_not(None))
         image_statement = image_statement.where(OsmPlace.id.is_not(None))
+        if evidence_request.feature_requirements:
+            image_statement = image_statement.where(
+                feature_requirements_clause(
+                    OsmPlace.features,
+                    evidence_request.feature_requirements,
+                )
+            )
     elif sample_images_only:
         metadata_statement = metadata_statement.where(
             OsmPlace.id.is_(None),
@@ -144,6 +156,8 @@ def search_images_by_text(
         cuisine_match = cuisine_filter(cuisine)
         metadata_statement = metadata_statement.where(cuisine_match)
         image_statement = image_statement.where(cuisine_match)
+
+    image_statement = image_statement.limit(min(100, max(top_k, top_k * 5)))
 
     metadata_matches: dict[UUID, tuple[int, int]] = {}
     if query_tokens:
@@ -197,6 +211,17 @@ def search_images_by_text(
                 )
             }
         )
+
+    if osm_places_only and evidence_request.feature_requirements:
+        matches_by_id = {
+            image_id: match
+            for image_id, match in matches_by_id.items()
+            if match[1] is not None
+            and matches_feature_requirements(
+                match[1].features or [],
+                evidence_request.feature_requirements,
+            )
+        }
 
     matches = sorted(
         matches_by_id.values(),

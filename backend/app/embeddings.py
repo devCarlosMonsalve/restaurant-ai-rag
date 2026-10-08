@@ -1,6 +1,8 @@
 from collections.abc import Sequence
+import time
 
 from google import genai
+from google.genai.errors import ServerError
 from google.genai import types
 
 from app.core.config import settings
@@ -42,16 +44,23 @@ def _embed_contents(contents: Sequence[str]) -> list[list[float]]:
         )
 
     with genai.Client(api_key=api_key.get_secret_value()) as client:
-        response = client.models.embed_content(
-            model=GEMINI_EMBEDDING_MODEL,
-            contents=[
-                types.UserContent(parts=[types.Part(text=content)])
-                for content in contents
-            ],
-            config=types.EmbedContentConfig(
-                output_dimensionality=EMBEDDING_DIMENSIONS,
-            ),
-        )
+        for attempt in range(3):
+            try:
+                response = client.models.embed_content(
+                    model=GEMINI_EMBEDDING_MODEL,
+                    contents=[
+                        types.UserContent(parts=[types.Part(text=content)])
+                        for content in contents
+                    ],
+                    config=types.EmbedContentConfig(
+                        output_dimensionality=EMBEDDING_DIMENSIONS,
+                    ),
+                )
+                break
+            except ServerError as error:
+                if error.code not in {500, 502, 503, 504} or attempt == 2:
+                    raise
+                time.sleep(2**attempt)
 
     embeddings = response.embeddings
     if embeddings is None:

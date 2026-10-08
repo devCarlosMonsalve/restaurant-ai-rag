@@ -28,6 +28,10 @@ def test_parse_madrid_restaurants_includes_places_without_commons_links() -> Non
                         "outdoor_seating": "yes",
                         "diet:vegetarian": "yes",
                         "wheelchair": "limited",
+                        "wheelchair:description": "Escalón de 30 cm en la entrada",
+                        "diet:kosher": "only",
+                        "diet:kosher:certifier": "Certificador Ejemplo",
+                        "check_date:diet:kosher": "2025-01-15",
                         "addr:street": "Calle Mayor",
                         "addr:housenumber": "10",
                         "addr:postcode": "28013",
@@ -55,7 +59,10 @@ def test_parse_madrid_restaurants_includes_places_without_commons_links() -> Non
     assert restaurant.features == (
         "Mesas al aire libre: disponible",
         "Opciones vegetarianas: disponible",
+        "Comida kosher: exclusivo",
         "Acceso en silla de ruedas: accesibilidad limitada",
+        "Certificador kosher: Certificador Ejemplo",
+        "Última revisión kosher: 2025-01-15",
     )
     assert restaurants[1].name == "Sin fotos"
     assert restaurants[1].wikimedia_commons is None

@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -108,6 +110,18 @@ class OsmRestaurantSearchResult(BaseModel):
     attribution: str
     attribution_url: str
     similarity: float
+
+
+class OsmRestaurantSearchResponse(BaseModel):
+    results: list[OsmRestaurantSearchResult]
+    evidence_status: Literal[
+        "not_required",
+        "verified",
+        "partial",
+        "no_evidence",
+        "unverified",
+    ]
+    evidence_message: str | None = None
 
 
 class RagQuestionRequest(BaseModel):
