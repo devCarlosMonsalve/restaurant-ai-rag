@@ -58,7 +58,7 @@
           <input id="query" name="query" type="search" placeholder="Ej. restaurante con pasta y terraza" autocomplete="off" required>
           <button id="submit" type="submit">Buscar</button>
         </form>
-        <div class="hint">La similitud coseno indica cercanía, no confianza. Las fotos incluyen licencia y atribución.</div>
+        <div class="hint">El ranking combina coincidencias con datos del lugar y similitud visual CLIP. La similitud no es confianza; las fotos incluyen licencia y atribución.</div>
       </header>
       <div id="status" role="status" aria-live="polite">Prueba: «Café histórico en Madrid»</div>
       <section id="results" class="grid" aria-label="Resultados"></section>
@@ -101,7 +101,7 @@
           <article class="card">
             <img src="/images/files/${imageName}" alt="${escapeHtml(item.source_name)}" loading="lazy">
             <div class="card-body">
-              <span class="score">Similitud ${item.similarity.toFixed(3)}</span>
+              <span class="score">CLIP ${item.similarity.toFixed(3)}</span>
               <h2>${escapeHtml(item.restaurant_name || item.source_name)}</h2>
               <p class="details">${details || "Madrid"}</p>
               <div class="credits">

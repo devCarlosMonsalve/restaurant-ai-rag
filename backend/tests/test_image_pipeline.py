@@ -13,6 +13,7 @@ from app.image_embeddings import (
     embed_text_for_image_search,
 )
 from app.image_ingestion import ImageSourceMetadata, ingest_image_to_database
+from app.image_search import _metadata_match_count, _tokens
 from app.models.image_embedding import ImageEmbedding
 from app.open_data_sources import OSMRestaurant
 from app.osm_ingestion import upsert_osm_place
@@ -195,6 +196,22 @@ def test_image_search_endpoint_returns_matches(
         "top_k": 3,
         "osm_places_only": True,
     }
+
+
+def test_metadata_search_matches_accents_and_important_spanish_terms() -> None:
+    query_tokens = _tokens("Cocido madrileño en La Bola")
+
+    assert _metadata_match_count(
+        query_tokens,
+        "osm-node-2697521931-Cocido_-_panoramio.jpg",
+        "La Bola",
+        "Category:La Bola Taberna",
+    ) == 2
+    assert _tokens("el de la en Madrid") == set()
+    assert _metadata_match_count(
+        _tokens("restaurante mexicano"),
+        "cuisine:mexican",
+    ) == 1
 
 
 def test_image_search_endpoint_validates_query_and_top_k(

@@ -55,7 +55,20 @@ It reports Hit@1 and Hit@3 (or the selected `--top-k`) overall and per language.
 It also prints positive and negative top-similarity ranges to help calibrate a
 future rejection threshold; negative results are not filtered yet. The command
 exits with an error if any expected image is missing from the database or fails
-to appear within the selected top-k results.
+to appear within the selected top-k results. The sample evaluator excludes OSM
+photos so its metrics remain specific to the illustration test corpus.
+
+To evaluate retrieval against the imported Madrid photos instead, run:
+
+```powershell
+.\.venv\Scripts\python.exe evaluate_image_search.py --cases .\data\image_evaluation\madrid_cases.json --osm-places-only --top-k 3
+```
+
+This real-photo set contains known Spanish and English queries for restaurant
+entrances, interiors, and dishes; its Hit@1/Hit@3 metrics provide a baseline
+for retrieval. Search results use exact text matches against photo filenames
+and OSM restaurant metadata alongside the visual CLIP ranking. The displayed
+CLIP similarity is not a confidence score.
 
 ## Import Madrid places and Commons photos
 

@@ -6,6 +6,11 @@ import pytest
 import evaluate_image_search
 
 
+MADRID_CASES_PATH = (
+    evaluate_image_search.EVALUATION_DIR / "madrid_cases.json"
+)
+
+
 def test_image_evaluation_cases_reference_existing_images() -> None:
     cases = evaluate_image_search.load_cases()
     image_names = {
@@ -27,6 +32,31 @@ def test_image_evaluation_cases_reference_existing_images() -> None:
     assert sum(case["language"] == "es" for case in abstention_cases) == 6
 
 
+def test_madrid_evaluation_cases_reference_imported_photos() -> None:
+    cases = evaluate_image_search.load_cases(MADRID_CASES_PATH)
+    image_names = {
+        path.name
+        for path in evaluate_image_search.IMAGES_DIR.rglob("*")
+        if path.is_file()
+    }
+
+    assert len(cases) == 12
+    assert {case["language"] for case in cases} == {"en", "es"}
+    image_cases = [
+        case for case in cases if case["expected_image"] is not None
+    ]
+    restaurant_cases = [
+        case for case in cases if case.get("expected_restaurant") is not None
+    ]
+    assert all(not case["should_abstain"] for case in cases)
+    assert all(case["expected_image"] in image_names for case in image_cases)
+    assert {case["expected_restaurant"] for case in restaurant_cases} == {"Xamach"}
+    assert len(image_cases) == 10
+    assert len(restaurant_cases) == 2
+    assert sum(case["language"] == "en" for case in cases) == 6
+    assert sum(case["language"] == "es" for case in cases) == 6
+
+
 def test_image_evaluation_reports_hit_rates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -46,6 +76,13 @@ def test_image_evaluation_reports_hit_rates(
             "language": "es",
         },
         {
+            "query": "a restaurant named La Bola",
+            "expected_image": None,
+            "expected_restaurant": "La Bola",
+            "should_abstain": False,
+            "language": "es",
+        },
+        {
             "query": "a sailboat on the ocean",
             "expected_image": None,
             "should_abstain": True,
@@ -53,7 +90,11 @@ def test_image_evaluation_reports_hit_rates(
         },
     ]
     (tmp_path / "pasta-primavera.png").touch()
-    monkeypatch.setattr(evaluate_image_search, "load_cases", lambda: cases)
+    monkeypatch.setattr(
+        evaluate_image_search,
+        "load_cases",
+        lambda cases_path=evaluate_image_search.CASES_PATH: cases,
+    )
     monkeypatch.setattr(evaluate_image_search, "IMAGES_DIR", tmp_path)
 
     class FakeScalarResult:
@@ -78,18 +119,27 @@ def test_image_evaluation_reports_hit_rates(
     monkeypatch.setattr(
         evaluate_image_search,
         "search_images_by_text",
-        lambda query, session, *, top_k: [
-            SimpleNamespace(source_name="pasta-primavera.png", similarity=0.19)
+        lambda query,
+        session,
+        *,
+        top_k,
+        osm_places_only,
+        sample_images_only: [
+            SimpleNamespace(
+                source_name="pasta-primavera.png",
+                restaurant_name="La Bola",
+                similarity=0.19,
+            )
         ],
     )
 
     evaluate_image_search.run_evaluation(top_k=3)
     output = capsys.readouterr().out
 
-    assert "Overall Hit@1: 2/2 (100%)" in output
-    assert "Overall Hit@3: 2/2 (100%)" in output
+    assert "Overall Hit@1: 3/3 (100%)" in output
+    assert "Overall Hit@3: 3/3 (100%)" in output
     assert "English Hit@1: 1/1 (100%)" in output
-    assert "Spanish Hit@1: 1/1 (100%)" in output
+    assert "Spanish Hit@1: 2/2 (100%)" in output
     assert "ABSTENTION REVIEW | top_similarity=0.19" in output
     assert "Negative top-similarity range: 0.190-0.190" in output
 
@@ -107,7 +157,11 @@ def test_image_evaluation_fails_if_expected_images_are_not_indexed(
         }
     ]
     (tmp_path / "pasta-primavera.png").touch()
-    monkeypatch.setattr(evaluate_image_search, "load_cases", lambda: cases)
+    monkeypatch.setattr(
+        evaluate_image_search,
+        "load_cases",
+        lambda cases_path=evaluate_image_search.CASES_PATH: cases,
+    )
     monkeypatch.setattr(evaluate_image_search, "IMAGES_DIR", tmp_path)
 
     class FakeScalarResult:

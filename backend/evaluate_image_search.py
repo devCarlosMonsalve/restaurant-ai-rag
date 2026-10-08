@@ -1,7 +1,7 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,23 +18,32 @@ IMAGES_DIR = Path(__file__).parent / "data" / "images"
 class ImageEvaluationCase(TypedDict):
     query: str
     expected_image: str | None
+    expected_restaurant: NotRequired[str | None]
     should_abstain: bool
     language: Literal["en", "es"]
 
 
-def load_cases() -> list[ImageEvaluationCase]:
+def _expected_result(case: ImageEvaluationCase) -> str | None:
+    return case.get("expected_restaurant") or case["expected_image"]
+
+
+def load_cases(cases_path: Path = CASES_PATH) -> list[ImageEvaluationCase]:
     cases: list[ImageEvaluationCase] = json.loads(
-        CASES_PATH.read_text(encoding="utf-8")
+        cases_path.read_text(encoding="utf-8")
     )
     if not cases:
         raise ValueError("Image evaluation data must contain at least one case")
     if any(
-        case["should_abstain"] != (case["expected_image"] is None)
+        case["should_abstain"] == (_expected_result(case) is not None)
+        or (
+            case["expected_image"] is not None
+            and case.get("expected_restaurant") is not None
+        )
         for case in cases
     ):
         raise ValueError(
-            "Abstention cases must have no expected image; answerable cases "
-            "must specify one"
+            "Abstention cases must have no expected result; answerable cases "
+            "must specify exactly one expected image or restaurant"
         )
     return cases
 
@@ -45,7 +54,7 @@ def _hit_count(
     cutoff: int,
 ) -> int:
     return sum(
-        case["expected_image"] in retrieved_images[:cutoff]
+        _expected_result(case) in retrieved_images[:cutoff]
         for case, retrieved_images in evaluations
     )
 
@@ -63,8 +72,13 @@ def _print_metrics(
     print(f"{label} Hit@{top_k}: {hit_at_k}/{total} ({hit_at_k / total:.0%})")
 
 
-def run_evaluation(top_k: int) -> None:
-    cases = load_cases()
+def run_evaluation(
+    top_k: int,
+    *,
+    cases_path: Path = CASES_PATH,
+    osm_places_only: bool = False,
+) -> None:
+    cases = load_cases(cases_path)
     answerable_cases = [
         case for case in cases if not case["should_abstain"]
     ]
@@ -79,7 +93,7 @@ def run_evaluation(top_k: int) -> None:
     missing_files = sorted(
         image_name
         for image_name in expected_images
-        if not (IMAGES_DIR / image_name).is_file()
+        if not any(IMAGES_DIR.rglob(image_name))
     )
     if missing_files:
         raise ValueError(
@@ -103,8 +117,20 @@ def run_evaluation(top_k: int) -> None:
             )
 
         for case in cases:
-            matches = search_images_by_text(case["query"], session, top_k=top_k)
-            retrieved_images = [match.source_name for match in matches]
+            matches = search_images_by_text(
+                case["query"],
+                session,
+                top_k=top_k,
+                osm_places_only=osm_places_only,
+                sample_images_only=not osm_places_only,
+            )
+            expected_restaurant = case.get("expected_restaurant")
+            retrieved_images = [
+                (match.restaurant_name or "")
+                if expected_restaurant
+                else match.source_name
+                for match in matches
+            ]
             top_similarity = matches[0].similarity if matches else None
 
             if case["should_abstain"]:
@@ -117,21 +143,26 @@ def run_evaluation(top_k: int) -> None:
                 )
                 continue
 
-            expected_image = case["expected_image"]
-            if expected_image is None:
-                raise ValueError("Answerable evaluation cases need an expected image")
+            expected_result = _expected_result(case)
+            if expected_result is None:
+                raise ValueError("Answerable evaluation cases need an expected result")
             evaluations.append((case, retrieved_images))
             if top_similarity is not None:
                 positive_top_scores.append(top_similarity)
 
             hit_at_1 = bool(retrieved_images) and (
-                retrieved_images[0] == expected_image
+                retrieved_images[0] == expected_result
             )
-            hit_at_k = expected_image in retrieved_images
+            hit_at_k = expected_result in retrieved_images
+            expected_label = (
+                "expected_restaurant"
+                if expected_restaurant
+                else "expected_image"
+            )
             print(
                 f"{'HIT' if hit_at_1 else 'MISS'}@1 | "
                 f"{'HIT' if hit_at_k else 'MISS'}@{top_k} | "
-                f"expected={expected_image} | "
+                f"{expected_label}={expected_result} | "
                 f"top_similarity={top_similarity} | "
                 f"retrieved={retrieved_images} | query={case['query']}"
             )
@@ -174,11 +205,26 @@ def main() -> None:
         default=3,
         help="Ranking cutoff for Hit@K (default: 3).",
     )
+    parser.add_argument(
+        "--cases",
+        type=Path,
+        default=CASES_PATH,
+        help="Path to a JSON evaluation case file.",
+    )
+    parser.add_argument(
+        "--osm-places-only",
+        action="store_true",
+        help="Restrict retrieval to photos linked to OpenStreetMap places.",
+    )
     args = parser.parse_args()
     if not 1 <= args.top_k <= 20:
         parser.error("--top-k must be between 1 and 20")
 
-    run_evaluation(args.top_k)
+    run_evaluation(
+        args.top_k,
+        cases_path=args.cases,
+        osm_places_only=args.osm_places_only,
+    )
 
 
 if __name__ == "__main__":

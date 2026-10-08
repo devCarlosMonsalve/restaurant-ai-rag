@@ -1,0 +1,76 @@
+[
+  {
+    "query": "cocido madrileño tradicional en La Bola",
+    "expected_image": "osm-node-2697521931-Cocido_-_panoramio.jpg",
+    "should_abstain": false,
+    "language": "es"
+  },
+  {
+    "query": "fachada del Café Comercial de Madrid",
+    "expected_image": "osm-node-26065697-Caf_Comercial_Exterior.jpg",
+    "should_abstain": false,
+    "language": "es"
+  },
+  {
+    "query": "entrada del restaurante mexicano Mestizo en Madrid",
+    "expected_image": null,
+    "expected_restaurant": "Xamach",
+    "should_abstain": false,
+    "language": "es"
+  },
+  {
+    "query": "entrada del restaurante VIPS en Madrid",
+    "expected_image": "osm-node-2830482300-Restaurante_VIPS_62724912.jpg",
+    "should_abstain": false,
+    "language": "es"
+  },
+  {
+    "query": "fachada de Villa Rosa en Madrid",
+    "expected_image": "osm-node-2647379650-Fachada_Villa_Rosa_IMGP2002_2344625403.jpg",
+    "should_abstain": false,
+    "language": "es"
+  },
+  {
+    "query": "entrada del restaurante Casa Mingo en Madrid",
+    "expected_image": "osm-way-119181119-Casa_Mingo-2009.jpg",
+    "should_abstain": false,
+    "language": "es"
+  },
+  {
+    "query": "traditional cocido stew in Madrid at La Bola",
+    "expected_image": "osm-node-2697521931-Cocido_-_panoramio.jpg",
+    "should_abstain": false,
+    "language": "en"
+  },
+  {
+    "query": "historic facade of Cafe Comercial in Madrid",
+    "expected_image": "osm-node-26065697-Caf_Comercial_Exterior.jpg",
+    "should_abstain": false,
+    "language": "en"
+  },
+  {
+    "query": "entrance of the Mestizo Mexican restaurant in Madrid",
+    "expected_image": null,
+    "expected_restaurant": "Xamach",
+    "should_abstain": false,
+    "language": "en"
+  },
+  {
+    "query": "historic interior of the Lhardy restaurant in Madrid",
+    "expected_image": "osm-node-2437748225-Interior_tienda_Lhardy-2009.jpg",
+    "should_abstain": false,
+    "language": "en"
+  },
+  {
+    "query": "VIPS restaurant storefront in Madrid",
+    "expected_image": "osm-node-2830482300-Restaurante_VIPS_62724912.jpg",
+    "should_abstain": false,
+    "language": "en"
+  },
+  {
+    "query": "Casa Mingo restaurant entrance in Madrid",
+    "expected_image": "osm-way-119181119-Casa_Mingo-2009.jpg",
+    "should_abstain": false,
+    "language": "en"
+  }
+]
