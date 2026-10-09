@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { type FormEvent, useState } from "react";
 
 type RestaurantCandidate = {
@@ -159,12 +161,12 @@ export default function Home() {
   return (
     <main className="page-shell">
       <header className="hero">
-        <a className="brand" href="/" aria-label="Saborea, inicio">
+        <Link className="brand" href="/" aria-label="Saborea, inicio">
           <span className="brand-mark" aria-hidden="true">
             S
           </span>
           <span>saborea</span>
-        </a>
+        </Link>
         <p className="eyebrow">BUEN COMER, CON BUENAS FUENTES</p>
         <h1>
           ¿Qué te apetece
@@ -241,15 +243,18 @@ export default function Home() {
                 <div className="card-grid">
                   {result.photos.map((photo, index) => (
                     <article className="photo-card" key={`${photo.image_url}-${index}`}>
-                      <img
-                        src={photo.image_url}
-                        alt={
-                          photo.restaurant_name
-                            ? `Foto de ${photo.restaurant_name}`
-                            : "Fotografía de restaurante"
-                        }
-                        loading="lazy"
-                      />
+                      <div className="photo-image">
+                        <Image
+                          src={photo.image_url}
+                          alt={
+                            photo.restaurant_name
+                              ? `Foto de ${photo.restaurant_name}`
+                              : "Fotografía de restaurante"
+                          }
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                        />
+                      </div>
                       <div className="card-content">
                         <h3>{photo.restaurant_name ?? "Restaurante"}</h3>
                         <p className="card-meta">
@@ -269,6 +274,15 @@ export default function Home() {
                             </a>
                           ) : (
                             photo.license_name && <span>{photo.license_name}</span>
+                          )}
+                          {photo.source_url && (
+                            <a
+                              href={photo.source_url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Fuente de la fotografía
+                            </a>
                           )}
                           {photo.restaurant_source_url && (
                             <a
