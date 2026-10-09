@@ -38,6 +38,14 @@ from app.schemas import (
     RestaurantCreate,
     RestaurantRead,
 )
+from app.workflows.restaurant_photo_search import (
+    RestaurantPhotoWorkflowError,
+    run_restaurant_photo_workflow,
+)
+from app.workflows.schemas import (
+    RestaurantPhotoWorkflowRequest,
+    RestaurantPhotoWorkflowResponse,
+)
 app = FastAPI(title="Restaurant AI API")
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -158,6 +166,24 @@ def restaurant_search_agent(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="The restaurant search Agent could not complete the request.",
+        ) from error
+
+
+@app.post(
+    "/workflows/restaurant-photo-search",
+    response_model=RestaurantPhotoWorkflowResponse,
+    tags=["workflows"],
+)
+def restaurant_photo_search_workflow(
+    request: RestaurantPhotoWorkflowRequest,
+    db: Session = Depends(get_db),
+) -> RestaurantPhotoWorkflowResponse:
+    try:
+        return run_restaurant_photo_workflow(request, db)
+    except RestaurantPhotoWorkflowError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The restaurant photo workflow could not complete the request.",
         ) from error
 
 

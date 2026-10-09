@@ -289,3 +289,21 @@ preprocessing, corpus, or ranking to pursue marginal benchmark gains. Only
 verified correctness fixes that preserve the stated baseline are in scope.
 Potential retrieval optimizations belong in a future phase and must be
 evaluated separately; they are not part of this baseline.
+
+## Restaurant photo workflow
+
+`POST /workflows/restaurant-photo-search` coordinates the existing restaurant
+and photo Tools with LangGraph. It searches up to `candidate_limit` restaurant
+candidates, then performs a targeted OSM photo search for each candidate. Photos
+are included only when `restaurant_source_url` exactly matches the candidate's
+`source_url`; unassociated results are not matched by name. The response
+separates restaurants with returned photos from candidates without returned
+photos and does not claim that an empty photo search proves no photos exist.
+
+The request accepts `query`, optional `city` and exact OSM `cuisine`, and
+`candidate_limit` (default 5, maximum 20). `photos_per_candidate` defaults to
+1 and can be set from 1 to 5. The workflow injects the database session through
+its runtime context rather than including it in workflow state or Tool inputs.
+Tool failures return HTTP 502; they are not treated as empty search results.
+This workflow does not modify retrieval, embeddings, ranking, or the existing
+Tools.
