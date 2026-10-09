@@ -2,14 +2,17 @@ from sqlalchemy.orm import Session
 
 from app.application.restaurant_discovery import search_restaurant_photos
 from app.document_search import search_document_chunks
+from app.image_presentation import image_file_url
 from app.rag import answer_with_rag
 from app.schemas import (
     DocumentSearchRequest,
     DocumentSearchResult,
     ImageSearchRequest,
+    RagPhoto,
     RagAnswerResponse,
     RagAnswerWithPhotosResponse,
     RagQuestionRequest,
+    RagQuestionWithPhotosRequest,
 )
 
 
@@ -32,17 +35,40 @@ def answer_from_documents(
 
 
 def answer_from_documents_with_photos(
-    request: RagQuestionRequest,
+    request: RagQuestionWithPhotosRequest,
     session: Session,
 ) -> RagAnswerWithPhotosResponse:
     answer = answer_from_documents(request, session)
-    photos = search_restaurant_photos(
-        ImageSearchRequest(
-            query=request.query,
-            top_k=request.top_k,
-        ),
-        session,
-    )
+    photos = []
+    if request.include_photos:
+        image_results = search_restaurant_photos(
+            ImageSearchRequest(
+                query=request.query,
+                top_k=request.top_k,
+                osm_places_only=True,
+            ),
+            session,
+        )
+        photos = [
+            RagPhoto(
+                source_name=photo.source_name,
+                image_url=image_file_url(photo.image_path),
+                similarity=photo.similarity,
+                metadata_match_count=photo.metadata_match_count,
+                source_url=photo.source_url,
+                license_name=photo.license_name,
+                license_url=photo.license_url,
+                attribution=photo.attribution,
+                restaurant_name=photo.restaurant_name,
+                restaurant_location=photo.restaurant_location,
+                restaurant_cuisine=photo.restaurant_cuisine,
+                restaurant_features=photo.restaurant_features,
+                restaurant_source_url=photo.restaurant_source_url,
+                restaurant_attribution=photo.restaurant_attribution,
+                restaurant_attribution_url=photo.restaurant_attribution_url,
+            )
+            for photo in image_results
+        ]
     return RagAnswerWithPhotosResponse(
         answer=answer.answer,
         sources=answer.sources,

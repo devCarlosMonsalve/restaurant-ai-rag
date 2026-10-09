@@ -1,7 +1,5 @@
 import logging
-from pathlib import Path
 from typing import Any, Literal, TypedDict
-from urllib.parse import quote
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
@@ -11,6 +9,7 @@ from app.application.restaurant_discovery import (
     search_restaurants as search_restaurants_use_case,
     search_verified_candidate_photos,
 )
+from app.image_presentation import image_file_url
 from app.schemas import (
     ImageSearchResult,
     OsmRestaurantSearchRequest,
@@ -130,13 +129,8 @@ def _serialize_photo(photo: Any) -> dict[str, Any]:
         raise RestaurantPhotoWorkflowError(
             "Photo search returned an invalid result type."
         )
-    filename = Path(photo.image_path.replace("\\", "/")).name
-    if not filename:
-        raise RestaurantPhotoWorkflowError(
-            "Photo search returned an image without a usable filename."
-        )
     result = photo.model_dump(mode="json", exclude={"image_path"})
-    result["image_url"] = f"/images/files/{quote(filename, safe='')}"
+    result["image_url"] = image_file_url(photo.image_path)
     return result
 
 

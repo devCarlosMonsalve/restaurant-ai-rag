@@ -8,6 +8,7 @@ from app.schemas import (
     OsmRestaurantSearchResult,
     OsmRestaurantSearchResponse,
     RagAnswerWithPhotosResponse,
+    RagPhoto,
     RagSource,
     ImageSearchResult,
 )
@@ -246,11 +247,12 @@ def test_ask_documents_returns_answer_and_sources(
             )
         ],
         photos=[
-            ImageSearchResult(
-                id="d4ada293-47d1-492e-b6f3-ff27aa6624d2",
+            RagPhoto(
                 source_name="pasta.jpg",
-                image_path="C:/images/pasta.jpg",
+                image_url="/images/files/pasta.jpg",
                 similarity=0.88,
+                license_name="CC BY 4.0",
+                attribution="Photographer",
             )
         ],
     )
@@ -259,20 +261,32 @@ def test_ask_documents_returns_answer_and_sources(
     def fake_answer(request, session):
         calls["query"] = request.query
         calls["top_k"] = request.top_k
+        calls["include_photos"] = request.include_photos
         return expected_response
 
     monkeypatch.setattr("app.main.answer_documents_use_case", fake_answer)
 
     response = client.post(
         "/documents/ask",
-        json={"query": "¿Cómo se prepara la pasta?", "top_k": 3},
+        json={
+            "query": "¿Cómo se prepara la pasta?",
+            "top_k": 3,
+            "include_photos": True,
+        },
     )
 
     assert response.status_code == 200
     assert response.json()["answer"] == expected_response.answer
     assert response.json()["sources"][0]["source_name"] == "menu.txt"
     assert response.json()["photos"][0]["source_name"] == "pasta.jpg"
-    assert calls == {"query": "¿Cómo se prepara la pasta?", "top_k": 3}
+    assert response.json()["photos"][0]["image_url"] == "/images/files/pasta.jpg"
+    assert response.json()["photos"][0]["attribution"] == "Photographer"
+    assert "image_path" not in response.json()["photos"][0]
+    assert calls == {
+        "query": "¿Cómo se prepara la pasta?",
+        "top_k": 3,
+        "include_photos": True,
+    }
 
 
 def test_restaurant_search_agent_endpoint_injects_database_session(

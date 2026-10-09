@@ -1,13 +1,12 @@
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import quote
 
 from google.genai import types
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
+from app.image_presentation import image_file_url
 from app.schemas import (
     DocumentSearchRequest,
     ImageSearchRequest,
@@ -135,10 +134,7 @@ def serialize_tool_result(value: Any) -> Any:
         excluded = {"image_path"} if isinstance(value, ImageSearchResult) else None
         result = value.model_dump(mode="json", exclude=excluded)
         if isinstance(value, ImageSearchResult):
-            filename = Path(value.image_path.replace("\\", "/")).name
-            if not filename:
-                raise ValueError("Photo result has no valid filename")
-            result["image_url"] = f"/images/files/{quote(filename, safe='')}"
+            result["image_url"] = image_file_url(value.image_path)
         return result
     if isinstance(value, list):
         return [serialize_tool_result(item) for item in value]

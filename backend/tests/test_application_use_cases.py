@@ -10,7 +10,9 @@ from app.schemas import (
     ImageSearchRequest,
     OsmRestaurantSearchRequest,
     RagAnswerResponse,
+    RagPhoto,
     RagQuestionRequest,
+    RagQuestionWithPhotosRequest,
     RagSource,
 )
 
@@ -214,8 +216,14 @@ def test_answer_from_documents_with_photos_keeps_evidence_separate(
         source_name="pasta.jpg",
         image_path="C:/images/pasta.jpg",
         similarity=0.88,
+        license_name="CC BY 4.0",
+        attribution="Photographer",
     )
-    request = RagQuestionRequest(query="tomato pasta", top_k=3)
+    request = RagQuestionWithPhotosRequest(
+        query="tomato pasta",
+        top_k=3,
+        include_photos=True,
+    )
     calls = {}
 
     def fake_document_answer(received_request, session):
@@ -247,18 +255,74 @@ def test_answer_from_documents_with_photos_keeps_evidence_separate(
 
     assert response.answer == document_answer.answer
     assert response.sources == document_answer.sources
-    assert response.photos == [photo]
+    assert response.photos == [
+        RagPhoto(
+            source_name="pasta.jpg",
+            image_url="/images/files/pasta.jpg",
+            similarity=0.88,
+            license_name="CC BY 4.0",
+            attribution="Photographer",
+        )
+    ]
+    assert "image_path" not in response.model_dump_json()
     assert calls == {
-        "request": ImageSearchRequest(query="tomato pasta", top_k=3),
+        "request": ImageSearchRequest(
+            query="tomato pasta",
+            top_k=3,
+            osm_places_only=True,
+        ),
         "session": sentinel.session,
     }
+
+
+def test_answer_from_documents_with_photos_skips_search_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document_answer = RagAnswerResponse(answer="Text answer.", sources=[])
+    request = RagQuestionWithPhotosRequest(query="tomato pasta", top_k=3)
+
+    def fake_document_answer(received_request, session):
+        assert received_request is request
+        assert session is sentinel.session
+        return document_answer
+
+    monkeypatch.setattr(
+        knowledge,
+        "answer_from_documents",
+        fake_document_answer,
+    )
+
+    def unexpected_photo_search(image_request, session):
+        assert image_request == ImageSearchRequest(
+            query=request.query,
+            top_k=request.top_k,
+            osm_places_only=True,
+        )
+        assert session is sentinel.session
+        pytest.fail("Photo search must be opt-in")
+
+    monkeypatch.setattr(
+        knowledge,
+        "search_restaurant_photos",
+        unexpected_photo_search,
+    )
+
+    response = knowledge.answer_from_documents_with_photos(request, sentinel.session)
+
+    assert response.answer == "Text answer."
+    assert response.sources == []
+    assert response.photos == []
 
 
 def test_answer_from_documents_with_photos_surfaces_search_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     document_answer = RagAnswerResponse(answer="Text answer.", sources=[])
-    request = RagQuestionRequest(query="tomato pasta", top_k=3)
+    request = RagQuestionWithPhotosRequest(
+        query="tomato pasta",
+        top_k=3,
+        include_photos=True,
+    )
 
     def return_document_answer(received_request, session):
         assert received_request is request
@@ -275,6 +339,7 @@ def test_answer_from_documents_with_photos_surfaces_search_errors(
         assert image_request == ImageSearchRequest(
             query="tomato pasta",
             top_k=3,
+            osm_places_only=True,
         )
         assert session is sentinel.session
         raise RuntimeError("Image retrieval failed")

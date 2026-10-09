@@ -132,6 +132,10 @@ class RagQuestionRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20)
 
 
+class RagQuestionWithPhotosRequest(RagQuestionRequest):
+    include_photos: bool = False
+
+
 class RagSource(BaseModel):
     document_id: UUID
     source_name: str
@@ -144,5 +148,23 @@ class RagAnswerResponse(BaseModel):
     sources: list[RagSource]
 
 
+class RagPhoto(BaseModel):
+    source_name: str
+    image_url: str
+    similarity: float
+    metadata_match_count: int = 0
+    source_url: str | None = None
+    license_name: str | None = None
+    license_url: str | None = None
+    attribution: str | None = None
+    restaurant_name: str | None = None
+    restaurant_location: str | None = None
+    restaurant_cuisine: str | None = None
+    restaurant_features: list[str] = Field(default_factory=list)
+    restaurant_source_url: str | None = None
+    restaurant_attribution: str | None = None
+    restaurant_attribution_url: str | None = None
+
+
 class RagAnswerWithPhotosResponse(RagAnswerResponse):
-    photos: list[ImageSearchResult] = Field(default_factory=list)
+    photos: list[RagPhoto] = Field(default_factory=list)

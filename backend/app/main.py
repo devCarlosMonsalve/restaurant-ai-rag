@@ -34,7 +34,7 @@ from app.schemas import (
     OsmRestaurantSearchRequest,
     OsmRestaurantSearchResponse,
     RagAnswerWithPhotosResponse,
-    RagQuestionRequest,
+    RagQuestionWithPhotosRequest,
     RestaurantCreate,
     RestaurantRead,
 )
@@ -145,7 +145,7 @@ def search_documents(
     tags=["documents"],
 )
 def ask_documents(
-    request: RagQuestionRequest,
+    request: RagQuestionWithPhotosRequest,
     db: Session = Depends(get_db),
 ) -> RagAnswerWithPhotosResponse:
     return answer_documents_use_case(request, db)

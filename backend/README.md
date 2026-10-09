@@ -350,13 +350,16 @@ provider request and its explicit storage setting instead of assuming that a
 different chat-model adapter has identical privacy behavior. The prompt text,
 Gemini model, temperature, token limit, no-document path, and public RAG
 answer and source fields remain unchanged. The HTTP `/documents/ask` response
-also includes a separate `photos` field; those visual results are retrieved
-with the original question and are never passed to the text generator. They
-are not document citations or evidence for the generated answer. The
-`answer_from_documents` Tool retains its answer-and-sources contract. Each
-HTTP request also invokes the existing OpenCLIP text-to-image search over the
-default image corpus, adding its model-load and retrieval cost. The chain
-currently parses plain text; it
+can optionally include a separate `photos` field by setting
+`include_photos: true` in the request. Photo retrieval reuses the original
+question and `top_k`, and is limited to OSM-linked photos served by the existing
+image-file endpoint. Each photo has an API-relative `image_url`, source/license
+and available attribution metadata; local image paths and database IDs are not
+returned. Photos are never passed to the text generator and are not document
+citations or evidence for the generated answer. The `answer_from_documents`
+Tool retains its answer-and-sources contract. OpenCLIP loading and retrieval
+costs are incurred only when `include_photos` is enabled. The chain currently
+parses plain text; it
 does not independently validate citations or change the retrieved sources.
 
 `langchain-core` is a direct dependency because the application imports its
