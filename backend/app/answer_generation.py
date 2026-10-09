@@ -8,6 +8,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 
 from app.core.config import settings
+from app.observability import (
+    disable_automatic_langchain_tracing,
+    traced_span,
+)
 from app.schemas import DocumentSearchResult
 
 GEMINI_GENERATION_MODEL = "gemini-3.8-flash"
@@ -49,16 +53,20 @@ def _generate_with_gemini(prompt: ChatPromptValue) -> AIMessage:
         )
 
     with genai.Client(api_key=api_key.get_secret_value()) as client:
-        interaction = client.interactions.create(
-            model=GEMINI_GENERATION_MODEL,
-            input=messages[1].content,
-            system_instruction=messages[0].content,
-            generation_config={
-                "temperature": 0.2,
-                "max_output_tokens": 512,
-            },
-            store=False,
-        )
+        with traced_span(
+            "llm.gemini.document_answer",
+            {"gen_ai.request.model": GEMINI_GENERATION_MODEL},
+        ):
+            interaction = client.interactions.create(
+                model=GEMINI_GENERATION_MODEL,
+                input=messages[1].content,
+                system_instruction=messages[0].content,
+                generation_config={
+                    "temperature": 0.2,
+                    "max_output_tokens": 512,
+                },
+                store=False,
+            )
 
     if interaction.output_text is None or not interaction.output_text.strip():
         raise RuntimeError("Gemini returned an empty answer")
@@ -86,12 +94,20 @@ def generate_grounded_answer(
         f"[{chunk.source_name}#{chunk.chunk_index}]\n{chunk.content}"
         for chunk in chunks
     )
-    answer = _RAG_GENERATION_CHAIN.invoke(
+    with traced_span(
+        "rag.generate_answer",
         {
-            "question": question,
-            "excerpts": excerpts,
-        }
-    )
+            "gen_ai.request.model": GEMINI_GENERATION_MODEL,
+            "rag.context_chunk_count": len(chunks),
+        },
+    ):
+        with disable_automatic_langchain_tracing():
+            answer = _RAG_GENERATION_CHAIN.invoke(
+                {
+                    "question": question,
+                    "excerpts": excerpts,
+                }
+            )
 
     if not answer or not answer.strip():
         raise RuntimeError("Gemini returned an empty answer")

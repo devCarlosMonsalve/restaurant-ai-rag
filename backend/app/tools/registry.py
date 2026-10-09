@@ -7,6 +7,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from app.image_presentation import image_file_url
+from app.observability import traced_span
 from app.schemas import (
     DocumentSearchRequest,
     ImageSearchRequest,
@@ -88,6 +89,25 @@ def get_function_declarations() -> list[types.FunctionDeclaration]:
 
 
 def dispatch_tool_call(
+    name: str | None,
+    arguments: Any,
+    session: Session,
+) -> dict[str, Any]:
+    definition = TOOL_DEFINITIONS.get(name or "")
+    safe_tool_name = definition.name if definition is not None else "unknown"
+    with traced_span(
+        "agent.tool",
+        {"tool.name": safe_tool_name},
+    ) as span:
+        result = _dispatch_tool_call(name, arguments, session)
+        span.set_attribute(
+            "tool.status",
+            "error" if "error" in result else "success",
+        )
+        return result
+
+
+def _dispatch_tool_call(
     name: str | None,
     arguments: Any,
     session: Session,

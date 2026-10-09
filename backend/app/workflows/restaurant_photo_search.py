@@ -10,6 +10,10 @@ from app.application.restaurant_discovery import (
     search_verified_candidate_photos,
 )
 from app.image_presentation import image_file_url
+from app.observability import (
+    disable_automatic_langchain_tracing,
+    traced_span,
+)
 from app.schemas import (
     ImageSearchResult,
     OsmRestaurantSearchRequest,
@@ -205,10 +209,23 @@ def run_restaurant_photo_workflow(
         "restaurants_with_photos": [],
         "candidates_without_returned_photos": [],
     }
-    result = _restaurant_photo_workflow.invoke(
-        state,
-        context={"session": session},
-    )
+    with traced_span(
+        "workflow.restaurant_photo_search",
+        {
+            "workflow.candidate_limit": request.candidate_limit,
+            "workflow.photos_per_candidate": request.photos_per_candidate,
+        },
+    ) as span:
+        with disable_automatic_langchain_tracing():
+            result = _restaurant_photo_workflow.invoke(
+                state,
+                context={"session": session},
+            )
+        span.set_attribute(
+            "workflow.candidate_count",
+            len(result["candidates"]),
+        )
+        span.set_attribute("workflow.photo_count", len(result["photos"]))
     return RestaurantPhotoWorkflowResponse(
         query=request.query,
         evidence_status=result["evidence_status"],

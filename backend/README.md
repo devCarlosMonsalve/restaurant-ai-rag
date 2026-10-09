@@ -371,9 +371,10 @@ client and make no provider calls:
 ```
 
 The existing `GEMINI_API_KEY` setting still configures the provider through
-the backend environment or its local `.env`; no LangSmith account or tracing
-service is required. The API continues to expose this generation through
-`POST /documents/ask`. The official `ChatGoogleGenerativeAI` adapter was not
+the backend environment or its local `.env`; no tracing service is required
+unless optional Phoenix tracing is enabled. The API continues to expose this
+generation through `POST /documents/ask`. The official
+`ChatGoogleGenerativeAI` adapter was not
 used because equivalence with the current explicit `store=False` request was
 not established. This synchronous chain does not add streaming, retries,
 structured output, or citation validation.
@@ -382,6 +383,50 @@ This integration adds LCEL composition to generation only. It does not add a
 LangChain vector-store retriever, change retrieval behavior, or run the
 real-provider RAG benchmark. A provider-adapter migration can be considered
 later if its privacy and request semantics are verified.
+
+## Optional local tracing with Phoenix
+
+Phoenix tracing is opt-in and disabled by default. Start the separate local
+Phoenix service from the repository root:
+
+```powershell
+docker compose -f infrastructure/docker/docker-compose.phoenix.yml up -d
+```
+
+Open `http://127.0.0.1:6006` for the Phoenix UI. The compose file binds the UI
+and OTLP HTTP receiver only to loopback and stores Phoenix data in its own
+named Docker volume; it does not change the PostgreSQL compose service.
+
+Set these values in `backend/.env` to enable export from the API:
+
+```dotenv
+PHOENIX_TRACING_ENABLED=true
+PHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6006/v1/traces
+PHOENIX_PROJECT_NAME=restaurant-ai-rag
+```
+
+Run the API as usual from `backend`:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+The application uses OpenTelemetry OTLP over HTTP. Spans cover document and
+restaurant retrieval, RAG generation, photo retrieval, Agent model/tool calls,
+and the photo workflow. Only operational metadata is recorded, such as model
+and tool names, limits, result counts, and exception types. Queries, prompts,
+retrieved content, tool arguments/results, secrets, database identifiers, and
+local image paths are deliberately excluded. Automatic SDK instrumentation is
+not enabled, and the RAG LCEL, Agent, and photo-workflow graph calls explicitly
+disable automatic LangSmith tracing even if it is enabled elsewhere in the
+process. The LangSmith context helper is used only to suppress that tracing;
+it does not export runs. FastAPI flushes and shuts down the exporter during
+lifespan shutdown. To disable tracing, set `PHOENIX_TRACING_ENABLED=false`; Phoenix can
+be stopped independently with:
+
+```powershell
+docker compose -f infrastructure/docker/docker-compose.phoenix.yml down
+```
 
 ## Retrieval baseline — FROZEN
 

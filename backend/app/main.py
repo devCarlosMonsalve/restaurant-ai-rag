@@ -1,3 +1,6 @@
+import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -25,6 +28,10 @@ from app.database import get_db
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.models.restaurant import Restaurant
+from app.observability import (
+    configure_phoenix_tracing,
+    shutdown_phoenix_tracing,
+)
 from app.schemas import (
     DocumentSearchRequest,
     DocumentSearchResult,
@@ -46,7 +53,22 @@ from app.workflows.schemas import (
     RestaurantPhotoWorkflowRequest,
     RestaurantPhotoWorkflowResponse,
 )
-app = FastAPI(title="Restaurant AI API")
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    del _app
+    tracer_provider = configure_phoenix_tracing()
+    try:
+        yield
+    finally:
+        if tracer_provider is not None and not shutdown_phoenix_tracing():
+            logger.warning("Phoenix spans were not fully exported during shutdown")
+
+
+app = FastAPI(title="Restaurant AI API", lifespan=lifespan)
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 STATIC_DIR = BACKEND_DIR / "static"

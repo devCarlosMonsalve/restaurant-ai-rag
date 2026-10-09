@@ -19,6 +19,10 @@ from app.agents.schemas import (
     RestaurantSearchAgentResponse,
 )
 from app.core.config import settings
+from app.observability import (
+    disable_automatic_langchain_tracing,
+    traced_span,
+)
 from app.schemas import ImageSearchRequest, OsmRestaurantSearchResult
 from app.tools.registry import (
     dispatch_tool_call,
@@ -101,7 +105,18 @@ def run_restaurant_search_agent(
 
     try:
         with genai.Client(api_key=api_key.get_secret_value()) as client:
-            return _run_conversation(client, query, session)
+            with traced_span(
+                "agent.restaurant_search",
+                {
+                    "gen_ai.request.model": RESTAURANT_SEARCH_AGENT_MODEL,
+                    "agent.max_tool_calls": MAX_TOOL_CALLS,
+                    "agent.max_model_turns": MAX_MODEL_TURNS,
+                },
+            ) as span:
+                with disable_automatic_langchain_tracing():
+                    response = _run_conversation(client, query, session)
+                span.set_attribute("agent.photo_count", len(response.photos))
+                return response
     except APIError as error:
         logger.exception("Gemini request failed for restaurant search Agent")
         raise RestaurantSearchAgentError(
@@ -431,11 +446,20 @@ def _call_model_node(
             disable=True
         ),
     )
-    response = runtime.context["client"].models.generate_content(
-        model=RESTAURANT_SEARCH_AGENT_MODEL,
-        contents=state["contents"],
-        config=config,
-    )
+    with traced_span(
+        "agent.model_call",
+        {
+            "gen_ai.request.model": RESTAURANT_SEARCH_AGENT_MODEL,
+            "agent.model_turn": state["model_turn_count"] + 1,
+            "agent.tool_call_count": state["tool_call_count"],
+            "agent.tools_enabled": tools_enabled,
+        },
+    ):
+        response = runtime.context["client"].models.generate_content(
+            model=RESTAURANT_SEARCH_AGENT_MODEL,
+            contents=state["contents"],
+            config=config,
+        )
     candidate = response.candidates[0] if response.candidates else None
     model_content = candidate.content if candidate is not None else None
     if model_content is None:

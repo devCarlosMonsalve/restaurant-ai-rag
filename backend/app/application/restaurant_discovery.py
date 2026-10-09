@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.image_search import search_images_by_text
+from app.observability import traced_span
 from app.restaurant_search import search_osm_places_by_text
 from app.schemas import (
     ImageSearchRequest,
@@ -27,14 +28,22 @@ def search_restaurants(
     *,
     include_places_with_photos: bool = False,
 ) -> OsmRestaurantSearchResponse:
-    return search_osm_places_by_text(
-        request.query,
-        session,
-        top_k=request.top_k,
-        city=request.city,
-        cuisine=request.cuisine,
-        include_places_with_photos=include_places_with_photos,
-    )
+    with traced_span(
+        "retrieval.restaurants",
+        {
+            "retrieval.top_k": request.top_k,
+            "retrieval.include_places_with_photos": include_places_with_photos,
+        },
+    ) as span:
+        result = search_osm_places_by_text(
+            request.query,
+            session,
+            top_k=request.top_k,
+            city=request.city,
+            cuisine=request.cuisine,
+            include_places_with_photos=include_places_with_photos,
+        )
+        return result
 
 
 def search_restaurant_photos(
@@ -52,11 +61,21 @@ def search_restaurant_photos(
     if osm_place_id is not None:
         search_options["osm_place_id"] = osm_place_id
 
-    return search_images_by_text(
-        request.query,
-        session,
-        **search_options,
-    )
+    with traced_span(
+        "retrieval.restaurant_photos",
+        {
+            "retrieval.top_k": request.top_k,
+            "retrieval.osm_places_only": request.osm_places_only,
+            "retrieval.candidate_scoped": osm_place_id is not None,
+        },
+    ) as span:
+        results = search_images_by_text(
+            request.query,
+            session,
+            **search_options,
+        )
+        span.set_attribute("retrieval.result_count", len(results))
+        return results
 
 
 def search_verified_candidate_photos(
