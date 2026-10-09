@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
 import { type FormEvent, useState } from "react";
 
 type RestaurantCandidate = {
@@ -222,7 +223,19 @@ export default function Home() {
             <section className="answer-card" aria-labelledby="answer-title">
               <p className="eyebrow">TU BÚSQUEDA</p>
               <h2 id="answer-title">Una selección para ti</h2>
-              <p className="answer-text">{result.answer}</p>
+              <div className="answer-text">
+                <ReactMarkdown
+                  components={{
+                    a: ({ href, children }) => (
+                      <a href={href} target="_blank" rel="noreferrer">
+                        {children}
+                      </a>
+                    ),
+                  }}
+                >
+                  {result.answer}
+                </ReactMarkdown>
+              </div>
             </section>
 
             {result.photos.length > 0 && (

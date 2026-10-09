@@ -202,10 +202,37 @@ h1 span {
 }
 
 .answer-text {
-  margin: 17px 0 0;
+  margin-top: 17px;
   color: #565c51;
   line-height: 1.75;
-  white-space: pre-line;
+}
+
+.answer-text > :first-child {
+  margin-top: 0;
+}
+
+.answer-text > :last-child {
+  margin-bottom: 0;
+}
+
+.answer-text p + p,
+.answer-text p + ul,
+.answer-text p + ol {
+  margin-top: 12px;
+}
+
+.answer-text ul,
+.answer-text ol {
+  padding-left: 1.4rem;
+}
+
+.answer-text li + li {
+  margin-top: 7px;
+}
+
+.answer-text a {
+  color: #526b45;
+  text-underline-offset: 2px;
 }
 
 .results-group {

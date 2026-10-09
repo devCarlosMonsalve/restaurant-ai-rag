@@ -33,6 +33,10 @@ does not need cross-origin access to FastAPI and the backend CORS policy remains
 unchanged. The proxy validates the request size and passes the backend response
 status through without logging query content.
 
+Agent answers are Markdown and are rendered with `react-markdown`; raw HTML is
+not enabled. Restaurant candidates and photo credits are rendered from their
+separate structured response fields.
+
 Run the frontend checks with:
 
 ```powershell
