@@ -1,7 +1,10 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.agents.schemas import RestaurantSearchAgentResponse
+from app.agents.schemas import (
+    RestaurantSearchAgentCandidate,
+    RestaurantSearchAgentResponse,
+)
 from app.agents.restaurant_search_agent import RestaurantSearchAgentError
 from app.schemas import (
     DocumentSearchResult,
@@ -298,7 +301,24 @@ def test_restaurant_search_agent_endpoint_injects_database_session(
     def fake_agent(query: str, session: Session) -> RestaurantSearchAgentResponse:
         calls["query"] = query
         calls["session"] = session
-        return RestaurantSearchAgentResponse(answer="He encontrado candidatos.")
+        return RestaurantSearchAgentResponse(
+            answer="He encontrado candidatos.",
+            restaurants=[
+                RestaurantSearchAgentCandidate(
+                    name="Casa Verde",
+                    city="Madrid",
+                    cuisine="vegetarian",
+                    location="Calle Mayor 1",
+                    latitude=40.4168,
+                    longitude=-3.7038,
+                    features=["outdoor_seating"],
+                    source_url="https://www.openstreetmap.org/node/123",
+                    attribution="© OpenStreetMap contributors",
+                    attribution_url="https://www.openstreetmap.org/copyright",
+                    similarity=0.82,
+                )
+            ],
+        )
 
     monkeypatch.setattr("app.main.run_restaurant_search_agent", fake_agent)
 
@@ -311,6 +331,21 @@ def test_restaurant_search_agent_endpoint_injects_database_session(
     assert response.json() == {
         "answer": "He encontrado candidatos.",
         "photos": [],
+        "restaurants": [
+            {
+                "name": "Casa Verde",
+                "city": "Madrid",
+                "cuisine": "vegetarian",
+                "location": "Calle Mayor 1",
+                "latitude": 40.4168,
+                "longitude": -3.7038,
+                "features": ["outdoor_seating"],
+                "source_url": "https://www.openstreetmap.org/node/123",
+                "attribution": "© OpenStreetMap contributors",
+                "attribution_url": "https://www.openstreetmap.org/copyright",
+                "similarity": 0.82,
+            }
+        ],
     }
     assert calls["query"] == "Busca restaurantes en Madrid"
     assert isinstance(calls["session"], Session)

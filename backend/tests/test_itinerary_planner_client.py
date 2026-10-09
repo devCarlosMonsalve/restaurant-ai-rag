@@ -6,6 +6,7 @@ import pytest
 from app import a2a_server
 from app.agents.restaurant_search_agent import RestaurantSearchAgentError
 from app.agents.schemas import (
+    RestaurantSearchAgentCandidate,
     RestaurantSearchAgentPhoto,
     RestaurantSearchAgentResponse,
 )
@@ -37,6 +38,21 @@ def test_planner_client_discovers_agent_and_consumes_synthetic_result(
         received_queries.append(query)
         return RestaurantSearchAgentResponse(
             answer="Synthetic restaurant options for the itinerary.",
+            restaurants=[
+                RestaurantSearchAgentCandidate(
+                    name="Casa Verde",
+                    city="Madrid",
+                    cuisine="vegetarian",
+                    location="Calle Mayor 1",
+                    latitude=40.4168,
+                    longitude=-3.7038,
+                    features=["outdoor_seating"],
+                    source_url="https://www.openstreetmap.org/node/123",
+                    attribution="© OpenStreetMap contributors",
+                    attribution_url="https://www.openstreetmap.org/copyright",
+                    similarity=0.82,
+                )
+            ],
             photos=[
                 RestaurantSearchAgentPhoto(
                     image_url="/images/commons-photo.jpg",
@@ -54,6 +70,8 @@ def test_planner_client_discovers_agent_and_consumes_synthetic_result(
 
     assert isinstance(response, RestaurantSearchAgentResponse)
     assert response.answer == "Synthetic restaurant options for the itinerary."
+    assert response.restaurants[0].name == "Casa Verde"
+    assert response.restaurants[0].features == ["outdoor_seating"]
     assert response.photos[0].image_url == "/images/commons-photo.jpg"
     assert response.photos[0].source_url == (
         "https://commons.wikimedia.org/wiki/File:commons-photo.jpg"

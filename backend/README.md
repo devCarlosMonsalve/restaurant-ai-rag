@@ -224,6 +224,11 @@ disabled. Tool errors are returned to the model as explicit error results;
 Gemini/API failures produce an HTTP 502 response instead of a fabricated
 answer. When photo search returns matches, the API response includes a `photos`
 array alongside `answer`.
+The response also includes a `restaurants` array containing the structured
+candidates used by the Agent, with public source and attribution fields but no
+database UUID. Its `similarity` values are retrieval ranking signals, not
+confidence scores; the candidate array is empty when no restaurant Tool
+candidate was retrieved.
 Each photo has a safe API-relative `image_url` (for example,
 `/images/files/commons-photo.jpg`) and available source, license, attribution,
 and restaurant metadata. The local `image_path` is never sent to the model or
@@ -542,12 +547,11 @@ handlers, so they do not require PostgreSQL or external providers:
 
 ## A2A server
 
-The standalone A2A server exposes the existing Restaurant Search Agent to an
-independent agent. A travel-planning agent can delegate restaurant discovery
-and receive the structured answer and photo evidence, while retaining
-responsibility for the itinerary. This service does not implement that planner
-or coordinate multiple internal agents; it reuses the existing Agent and Tool
-registry without changing their contracts.
+The standalone A2A server exposes the existing Restaurant Search Agent to
+independent agents. A separate Itinerary Planner Agent can delegate restaurant
+discovery and receive structured evidence, while retaining responsibility for
+the dining draft. Both services run as independent processes; neither changes
+the existing FastAPI or MCP contracts.
 
 Start the server from `backend`:
 
@@ -635,4 +639,112 @@ transport and replace its Agent execution with a synthetic result:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\test_itinerary_planner_client.py
+```
+
+The separate `app.itinerary_planner` module builds a deterministic dining draft
+from those structured candidates. Give it the trip length explicitly:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.itinerary_planner --days 3 "Find vegetarian restaurants in Madrid"
+```
+
+The MVP assigns at most one candidate per day in the Agent's retrieval order,
+never repeats a restaurant, and returns extra candidates as alternatives.
+Days without enough evidence remain unfilled. Day numbers are placeholders;
+the planner does not infer travel routes, opening hours, availability, or
+reservations. Its in-memory tests exercise the A2A exchange with synthetic
+candidates and do not call Gemini or PostgreSQL:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_itinerary_planner.py
+```
+
+### Itinerary Planner A2A service
+
+To let other A2A clients delegate the full dining-draft task, start the
+Itinerary Planner Agent in a second terminal while the Restaurant Discovery
+Agent is running:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.itinerary_planner_server
+```
+
+It listens on `http://127.0.0.1:8002`; its Agent Card is at
+`http://127.0.0.1:8002/.well-known/agent-card.json`. Send one
+`application/json` data part containing exactly `query` and `day_count`, for
+example `{"query":"vegetarian restaurants in Madrid","day_count":3}`. The
+completed task returns an `itinerary_dining_draft` JSON artifact. The planner
+delegates to the Restaurant Discovery Agent on port 8001, so a valid task uses
+the same database and Gemini configuration and may incur provider costs. The
+planner's task store is in memory, and cancellation is not supported. It binds
+to loopback without authentication and is intended for local development.
+
+An A2A client can discover the planner and send the structured request with the
+official SDK:
+
+```python
+import asyncio
+
+import httpx
+from a2a.client import A2ACardResolver, ClientConfig, create_client
+from a2a.helpers import new_data_message
+from a2a.types import Role, SendMessageRequest
+
+
+async def main():
+    async with httpx.AsyncClient() as http_client:
+        card = await A2ACardResolver(
+            http_client,
+            "http://127.0.0.1:8002",
+        ).get_agent_card()
+        client = await create_client(
+            agent=card,
+            client_config=ClientConfig(
+                streaming=False,
+                httpx_client=http_client,
+                accepted_output_modes=["application/json"],
+            ),
+        )
+        try:
+            request = SendMessageRequest(
+                message=new_data_message(
+                    {
+                        "query": "vegetarian restaurants in Madrid",
+                        "day_count": 3,
+                    },
+                    media_type="application/json",
+                    role=Role.ROLE_USER,
+                )
+            )
+            async for response in client.send_message(request):
+                print(response.task)
+        finally:
+            await client.close()
+
+
+asyncio.run(main())
+```
+
+The end-to-end A2A test connects both services through in-memory transports and
+uses synthetic restaurant candidates; it does not require PostgreSQL or call
+Gemini:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_itinerary_planner_server.py
+```
+
+For a terminal client, with both agents running, use:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.itinerary_planner_agent_client --days 3 "vegetarian restaurants in Madrid"
+```
+
+The client discovers the Itinerary Planner Agent, sends the JSON request,
+checks the task state, and validates the returned draft artifact. This live
+command delegates to restaurant discovery and therefore uses its database and
+Gemini configuration. The client integration tests run the complete chain
+with synthetic candidates:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_itinerary_planner_agent_client.py
 ```

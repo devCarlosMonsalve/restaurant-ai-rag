@@ -15,6 +15,7 @@ from app.application.restaurant_discovery import (
     search_verified_candidate_photos,
 )
 from app.agents.schemas import (
+    RestaurantSearchAgentCandidate,
     RestaurantSearchAgentPhoto,
     RestaurantSearchAgentResponse,
 )
@@ -680,6 +681,12 @@ def _finalize_node(state: _AgentState) -> dict[str, Any]:
         "final_response": RestaurantSearchAgentResponse(
             answer=final_answer,
             photos=state["photos"],
+            restaurants=[
+                RestaurantSearchAgentCandidate.model_validate(
+                    candidate.model_dump(exclude={"id"})
+                )
+                for candidate in state["restaurant_candidates"].values()
+            ],
         )
     }
 

@@ -16,6 +16,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 from app import a2a_server
 from app.agents.restaurant_search_agent import RestaurantSearchAgentError
 from app.agents.schemas import (
+    RestaurantSearchAgentCandidate,
     RestaurantSearchAgentPhoto,
     RestaurantSearchAgentResponse,
 )
@@ -80,6 +81,21 @@ def test_agent_card_and_jsonrpc_return_structured_result(
         received_queries.append(query)
         return RestaurantSearchAgentResponse(
             answer="Synthetic restaurant discovery result.",
+            restaurants=[
+                RestaurantSearchAgentCandidate(
+                    name="Casa Verde",
+                    city="Madrid",
+                    cuisine="vegetarian",
+                    location="Calle Mayor 1",
+                    latitude=40.4168,
+                    longitude=-3.7038,
+                    features=[],
+                    source_url="https://www.openstreetmap.org/node/123",
+                    attribution="© OpenStreetMap contributors",
+                    attribution_url="https://www.openstreetmap.org/copyright",
+                    similarity=0.82,
+                )
+            ],
             photos=[
                 RestaurantSearchAgentPhoto(
                     image_url="/images/commons-photo.jpg",
@@ -106,6 +122,8 @@ def test_agent_card_and_jsonrpc_return_structured_result(
     assert artifact.parts[0].media_type == "application/json"
     result = MessageToDict(artifact.parts[0].data)
     assert result["answer"] == "Synthetic restaurant discovery result."
+    assert result["restaurants"][0]["name"] == "Casa Verde"
+    assert "id" not in result["restaurants"][0]
     assert result["photos"][0]["image_url"] == "/images/commons-photo.jpg"
     serialized = json.dumps(result)
     assert "image_path" not in serialized

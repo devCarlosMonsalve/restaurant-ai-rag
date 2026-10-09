@@ -21,6 +21,21 @@ class RestaurantSearchAgentPhoto(BaseModel):
     restaurant_attribution_url: str | None = None
 
 
+class RestaurantSearchAgentCandidate(BaseModel):
+    name: str
+    city: str
+    cuisine: str | None
+    location: str | None
+    latitude: float | None
+    longitude: float | None
+    features: list[str] = Field(default_factory=list)
+    source_url: str
+    attribution: str
+    attribution_url: str
+    similarity: float
+
+
 class RestaurantSearchAgentResponse(BaseModel):
     answer: str
     photos: list[RestaurantSearchAgentPhoto] = Field(default_factory=list)
+    restaurants: list[RestaurantSearchAgentCandidate] = Field(default_factory=list)

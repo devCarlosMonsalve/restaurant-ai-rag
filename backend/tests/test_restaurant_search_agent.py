@@ -455,6 +455,15 @@ def test_agent_scopes_photos_by_candidate_id_and_exact_osm_url(
     )
 
     assert requested_place_ids == [first_candidate.id, second_candidate.id]
+    assert [candidate.name for candidate in response.restaurants] == [
+        "Casa Verde",
+        "Casa Verde",
+    ]
+    assert [candidate.source_url for candidate in response.restaurants] == [
+        first_candidate.source_url,
+        second_candidate.source_url,
+    ]
+    assert "id" not in response.model_dump(mode="json")["restaurants"][0]
     assert len(response.photos) == 1
     assert response.photos[0].restaurant_source_url == second_candidate.source_url
     assert response.photos[0].restaurant_source_url != first_candidate.source_url
