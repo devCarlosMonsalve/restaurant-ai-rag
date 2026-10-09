@@ -374,3 +374,54 @@ The workflow-specific option changes only candidate eligibility. The general
 restaurant-search Tool still excludes places with indexed photos by default;
 only this Workflow opts into including them. Embedding generation, semantic
 ranking, and the existing photo Tool contract are unchanged.
+
+## MCP server
+
+The standalone MCP server uses the official Python SDK v2 and the local
+`stdio` transport. It reuses the existing four Tools and opens/closes a
+SQLAlchemy session for each tool call. It does not add an HTTP listener or
+change the FastAPI endpoints. `search_restaurants` and
+`search_restaurant_photos` accept optional city and cuisine filters;
+`search_restaurant_photos` keeps the existing OSM-only restriction internal.
+Responses omit internal database IDs and local image paths while retaining
+public source and attribution URLs.
+
+From the `backend` directory, run it with:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.mcp_server
+```
+
+Configure an MCP-compatible local client to launch the same command using
+`stdio`. For example, a VS Code MCP configuration can use:
+
+```json
+{
+  "servers": {
+    "restaurant-ai-rag": {
+      "type": "stdio",
+      "command": "C:\\path\\to\\restaurant-ai-rag\\backend\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "C:\\path\\to\\restaurant-ai-rag\\backend"
+    }
+  }
+}
+```
+
+Replace the example paths with the local checkout path. Provide the same
+database and provider environment variables required by the relevant Tools
+through the client environment or a local, untracked environment file; do not
+put credentials in the checked-in MCP configuration. Restaurant and photo
+search need the configured database and embedding provider; document search
+needs the database and document embeddings; `answer_from_documents` also needs
+the configured generation provider. Local `stdio` is suitable for a desktop
+client. A remotely deployed server should use Streamable HTTP with explicit
+authentication and deployment-specific resource lifecycle management; that
+transport is not enabled here.
+
+The protocol and tool tests use the SDK's in-memory client and mocked Tool
+handlers, so they do not require PostgreSQL or external providers:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_mcp_server.py
+```
