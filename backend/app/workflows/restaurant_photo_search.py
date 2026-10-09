@@ -2,18 +2,16 @@ import logging
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 from urllib.parse import quote
-from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from sqlalchemy.orm import Session
 
 from app.application.restaurant_discovery import (
-    search_restaurant_photos as search_restaurant_photos_use_case,
     search_restaurants as search_restaurants_use_case,
+    search_verified_candidate_photos,
 )
 from app.schemas import (
-    ImageSearchRequest,
     ImageSearchResult,
     OsmRestaurantSearchRequest,
     OsmRestaurantSearchResponse,
@@ -94,91 +92,36 @@ def search_photos_for_candidates(
     state: WorkflowState,
     runtime: Runtime[WorkflowContext],
 ) -> dict[str, Any]:
-    photos: list[dict[str, Any]] = []
-    warnings = list(state["warnings"])
-    seen_photo_keys: set[str] = set()
-
-    for candidate in state["candidates"][: state["candidate_limit"]]:
-        query_parts = [
-            state["query"],
-            candidate["name"],
-            candidate.get("location"),
-            candidate.get("city"),
+    try:
+        candidates = [
+            OsmRestaurantSearchResult.model_validate(candidate)
+            for candidate in state["candidates"]
         ]
-        query = " ".join(part for part in query_parts if part)
-        try:
-            photo_results = search_restaurant_photos_use_case(
-                ImageSearchRequest(
-                    query=query,
-                    top_k=state["photos_per_candidate"],
-                    city=state["city"] or candidate.get("city"),
-                    cuisine=state["cuisine"],
-                    osm_places_only=True,
-                ),
-                runtime.context["session"],
-                osm_place_id=UUID(candidate["id"]),
-            )
-            if not isinstance(photo_results, list):
-                raise RestaurantPhotoWorkflowError(
-                    "Photo search returned an invalid payload."
-                )
-            parsed_photos = [
-                RestaurantPhoto.model_validate(_serialize_photo(photo))
-                for photo in photo_results[: state["photos_per_candidate"]]
-            ]
-        except RestaurantPhotoWorkflowError:
-            raise
-        except Exception as error:
-            logger.exception(
-                "Candidate-scoped photo search failed for OSM place %s",
-                candidate["id"],
-            )
-            raise RestaurantPhotoWorkflowError(
-                "Tool 'search_restaurant_photos' failed for a restaurant candidate."
-            ) from error
-
-        for photo in parsed_photos:
-            if not photo.restaurant_source_url:
-                warning = (
-                    "A photo result lacked restaurant_source_url and was not "
-                    "associated with a candidate."
-                )
-                if warning not in warnings:
-                    warnings.append(warning)
-                continue
-            if photo.restaurant_source_url != candidate["source_url"]:
-                warning = (
-                    "A photo result was excluded because its "
-                    "restaurant_source_url did not match the candidate."
-                )
-                if warning not in warnings:
-                    warnings.append(warning)
-                continue
-
-            photo_key = photo.source_url or str(photo.id)
-            if photo_key in seen_photo_keys:
-                continue
-            seen_photo_keys.add(photo_key)
-            photos.append(photo.model_dump(mode="json"))
-
-    associated_candidate_urls = {
-        photo["restaurant_source_url"] for photo in photos
-    }
-    if any(
-        candidate["source_url"] not in associated_candidate_urls
-        for candidate in state["candidates"]
-    ):
-        warning = (
-            "A photo search returning no associated results does not establish "
-            "that no photos exist."
+        photos, photo_warnings = search_verified_candidate_photos(
+            candidates,
+            state["query"],
+            runtime.context["session"],
+            city=state["city"],
+            cuisine=state["cuisine"],
+            candidate_limit=state["candidate_limit"],
+            photos_per_candidate=state["photos_per_candidate"],
         )
-        if warning not in warnings:
-            warnings.append(warning)
+        serialized_photos = [
+            RestaurantPhoto.model_validate(_serialize_photo(photo)).model_dump(
+                mode="json"
+            )
+            for photo in photos
+        ]
+    except Exception as error:
+        logger.exception("Candidate-scoped photo search failed in the workflow")
+        raise RestaurantPhotoWorkflowError(
+            "Tool 'search_restaurant_photos' failed for a restaurant candidate."
+        ) from error
 
     return {
-        "photos": photos,
+        "photos": serialized_photos,
         "photo_search_status": "completed",
-        "warnings": warnings,
+        "warnings": list(dict.fromkeys([*state["warnings"], *photo_warnings])),
     }
 
 

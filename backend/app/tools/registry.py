@@ -121,7 +121,7 @@ def dispatch_tool_call(
             **validated.model_dump(exclude=definition.hidden_parameters),
             session=session,
         )
-        return {"output": _serialize_result(result)}
+        return {"output": serialize_tool_result(result)}
     except Exception:
         logger.exception("Tool execution failed: %s", definition.name)
         return _tool_error(
@@ -130,7 +130,7 @@ def dispatch_tool_call(
         )
 
 
-def _serialize_result(value: Any) -> Any:
+def serialize_tool_result(value: Any) -> Any:
     if isinstance(value, BaseModel):
         excluded = {"image_path"} if isinstance(value, ImageSearchResult) else None
         result = value.model_dump(mode="json", exclude=excluded)
@@ -141,9 +141,9 @@ def _serialize_result(value: Any) -> Any:
             result["image_url"] = f"/images/files/{quote(filename, safe='')}"
         return result
     if isinstance(value, list):
-        return [_serialize_result(item) for item in value]
+        return [serialize_tool_result(item) for item in value]
     if isinstance(value, dict):
-        return {key: _serialize_result(item) for key, item in value.items()}
+        return {key: serialize_tool_result(item) for key, item in value.items()}
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     raise TypeError(f"Unsupported Tool result type: {type(value).__name__}")

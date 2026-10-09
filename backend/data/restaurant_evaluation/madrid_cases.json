@@ -103,5 +103,13 @@
     "city": "Madrid",
     "category": "manual_review",
     "review_only": true
+  },
+  {
+    "query": "cocina kosher",
+    "city": "Madrid",
+    "category": "evidence",
+    "expected_empty": true,
+    "expected_evidence_status": "no_evidence",
+    "label_source": "madrid_holdout_judgments.json"
   }
 ]

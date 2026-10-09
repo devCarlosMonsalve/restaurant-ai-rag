@@ -1,0 +1,23 @@
+[
+  {
+    "query": "fotos de Los Mandilones en Madrid",
+    "osm_type": "node",
+    "osm_id": 13481913634,
+    "expected_name": "Los Mandilones",
+    "expected_source_url": "https://www.openstreetmap.org/node/13481913634"
+  },
+  {
+    "query": "fotos de Los Nachos de Oro en Madrid",
+    "osm_type": "node",
+    "osm_id": 4596525105,
+    "expected_name": "Los Nachos de Oro",
+    "expected_source_url": "https://www.openstreetmap.org/node/4596525105"
+  },
+  {
+    "query": "fotos de Xamach en Madrid",
+    "osm_type": "node",
+    "osm_id": 11549992948,
+    "expected_name": "Xamach",
+    "expected_source_url": "https://www.openstreetmap.org/node/11549992948"
+  }
+]

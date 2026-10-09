@@ -2,26 +2,31 @@
   {
     "query": "¿Qué ingredientes llevan los tacos al pastor de Casa Luna?",
     "expected_source": "eval_casa_luna.txt",
+    "reference_answer": "Los tacos de coliflor al pastor llevan piña y achiote.",
     "should_abstain": false
   },
   {
     "query": "¿Qué opción de Sakura Bento no lleva pescado?",
     "expected_source": "eval_sakura_bento.txt",
+    "reference_answer": "El maki de aguacate es la opción sin pescado.",
     "should_abstain": false
   },
   {
     "query": "¿Qué ingredientes tiene el bowl de Verde Mesa?",
     "expected_source": "eval_verde_mesa.txt",
+    "reference_answer": "El bowl lleva lentejas, calabaza asada y tahini.",
     "should_abstain": false
   },
   {
     "query": "¿Qué salsa acompaña al magret de pato de Bistró Niebla?",
     "expected_source": "eval_bistro_niebla.txt",
+    "reference_answer": "El magret de pato se sirve con salsa de naranja.",
     "should_abstain": false
   },
   {
     "query": "¿Qué salsa llevan las enchiladas de Nopal y Maíz?",
     "expected_source": "eval_nopal_maiz.txt",
+    "reference_answer": "Las enchiladas llevan mole negro elaborado con cacao y chile.",
     "should_abstain": false
   },
   {
@@ -42,6 +47,7 @@
   {
     "query": "¿Qué caldo lleva el ramen shoyu de Kumo Ramen?",
     "expected_source": "eval_kumo_ramen.txt",
+    "reference_answer": "El ramen shoyu lleva caldo de soja y shiitake seco.",
     "should_abstain": false
   },
   {
@@ -52,6 +58,23 @@
   {
     "query": "¿Cuál es el teléfono de Casa Luna?",
     "expected_source": null,
+    "case_type": "unsupported",
     "should_abstain": true
+  },
+  {
+    "query": "¿Qué ingredientes lleva el plato?",
+    "expected_source": null,
+    "case_type": "ambiguous",
+    "should_abstain": true
+  },
+  {
+    "query": "¿Qué opción sin pescado ofrece Sakura Bento y qué caldo lleva el ramen shoyu de Kumo Ramen?",
+    "expected_source": null,
+    "expected_sources": [
+      "eval_sakura_bento.txt",
+      "eval_kumo_ramen.txt"
+    ],
+    "reference_answer": "Sakura Bento ofrece maki de aguacate sin pescado; Kumo Ramen prepara el ramen shoyu con caldo de soja y shiitake seco.",
+    "should_abstain": false
   }
 ]

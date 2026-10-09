@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from typing import Any
+from uuid import UUID
 
 import pytest
 from google.genai import types
@@ -7,7 +8,11 @@ from pydantic import SecretStr
 
 from app.agents import restaurant_search_agent
 from app.core.config import settings
-from app.schemas import ImageSearchResult, OsmRestaurantSearchResponse
+from app.schemas import (
+    ImageSearchResult,
+    OsmRestaurantSearchResponse,
+    OsmRestaurantSearchResult,
+)
 from app.tools import registry
 
 
@@ -84,6 +89,42 @@ def configure_client(
     return client
 
 
+def make_candidate(name: str, osm_id: int) -> OsmRestaurantSearchResult:
+    return OsmRestaurantSearchResult(
+        id=UUID(int=osm_id),
+        name=name,
+        city="Madrid",
+        cuisine="vegetarian",
+        location="Calle Mayor 1",
+        latitude=40.4168,
+        longitude=-3.7038,
+        features=[],
+        source_url=f"https://www.openstreetmap.org/node/{osm_id}",
+        attribution="© OpenStreetMap contributors",
+        attribution_url="https://www.openstreetmap.org/copyright",
+        similarity=0.82,
+    )
+
+
+def make_indexed_photo(restaurant_url: str, image_id: int) -> ImageSearchResult:
+    return ImageSearchResult(
+        id=UUID(int=image_id),
+        source_name=f"{image_id}.jpg",
+        image_path=f"C:/images/{image_id}.jpg",
+        similarity=0.9,
+        source_url=f"https://commons.wikimedia.org/wiki/File:{image_id}.jpg",
+        license_name="CC BY-SA 4.0",
+        license_url="https://creativecommons.org/licenses/by-sa/4.0/",
+        attribution="Photographer",
+        restaurant_name="Casa Verde",
+        restaurant_location="Calle Mayor 1",
+        restaurant_cuisine="vegetarian",
+        restaurant_source_url=restaurant_url,
+        restaurant_attribution="© OpenStreetMap contributors",
+        restaurant_attribution_url="https://www.openstreetmap.org/copyright",
+    )
+
+
 def test_function_declarations_hide_session_and_photo_corpus_selector() -> None:
     declarations = {
         declaration.name: declaration
@@ -103,6 +144,7 @@ def test_function_declarations_hide_session_and_photo_corpus_selector() -> None:
         "properties"
     ]
     assert "osm_places_only" not in photo_properties
+    assert "osm_place_id" not in photo_properties
 
 
 def test_dispatch_validates_arguments_and_injects_host_session(
@@ -350,9 +392,11 @@ def test_agent_returns_photo_results_as_safe_api_urls(
     )
 
 
-def test_agent_filters_photos_to_candidates_and_deduplicates_sources(
+def test_agent_scopes_photos_by_candidate_id_and_exact_osm_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    first_candidate = make_candidate("Casa Verde", 101)
+    second_candidate = make_candidate("Casa Verde", 202)
     client = configure_client(
         monkeypatch,
         function_call_response(
@@ -365,44 +409,44 @@ def test_agent_filters_photos_to_candidates_and_deduplicates_sources(
         ),
         text_response("He encontrado una foto del candidato vegetariano."),
     )
-    matching_photo = {
-        "image_url": "/images/files/green-place.jpg",
-        "source_url": "https://commons.wikimedia.org/wiki/File:green-place.jpg",
-        "restaurant_name": "Restaurante Verde",
-        "restaurant_cuisine": "vegetarian",
-    }
-    wrong_restaurant_photo = {
-        "image_url": "/images/files/casa-mingo.jpg",
-        "source_url": "https://commons.wikimedia.org/wiki/File:casa-mingo.jpg",
-        "restaurant_name": "Casa Mingo",
-        "restaurant_cuisine": "chicken",
-    }
-    duplicate_photo = {
-        **matching_photo,
-        "source_url": "https://commons.wikimedia.org/wiki/File:green-place-copy.jpg",
-    }
+    requested_place_ids: list[UUID] = []
 
     def fake_dispatch(name: str | None, args: Any, session: Any):
         if name == "search_restaurants":
             return {
                 "output": {
                     "results": [
-                        {"name": "Restaurante Verde", "cuisine": "vegetarian"}
-                    ]
+                        first_candidate.model_dump(mode="json"),
+                        second_candidate.model_dump(mode="json"),
+                    ],
+                    "evidence_status": "verified",
+                    "evidence_message": None,
                 }
             }
-        return {
-            "output": [
-                matching_photo,
-                wrong_restaurant_photo,
-                duplicate_photo,
-            ]
-        }
+        pytest.fail("The general photo Tool must not be used for known candidates")
+
+    def fake_candidate_photo_search(
+        request: Any,
+        session: Any,
+        *,
+        osm_place_id: UUID,
+    ) -> list[ImageSearchResult]:
+        requested_place_ids.append(osm_place_id)
+        if osm_place_id == first_candidate.id:
+            return [make_indexed_photo(second_candidate.source_url, 1001)]
+        return [
+            make_indexed_photo(second_candidate.source_url, 2001),
+            make_indexed_photo(second_candidate.source_url, 2001),
+        ]
 
     monkeypatch.setattr(
         restaurant_search_agent,
         "dispatch_tool_call",
         fake_dispatch,
+    )
+    monkeypatch.setattr(
+        "app.application.restaurant_discovery.search_restaurant_photos",
+        fake_candidate_photo_search,
     )
 
     response = restaurant_search_agent.run_restaurant_search_agent(
@@ -410,10 +454,10 @@ def test_agent_filters_photos_to_candidates_and_deduplicates_sources(
         object(),
     )
 
+    assert requested_place_ids == [first_candidate.id, second_candidate.id]
     assert len(response.photos) == 1
-    assert response.photos[0].restaurant_name == "Restaurante Verde"
-    assert response.photos[0].restaurant_cuisine == "vegetarian"
-    assert "Casa Mingo" not in str(client.models.requests[-1]["contents"])
+    assert response.photos[0].restaurant_source_url == second_candidate.source_url
+    assert response.photos[0].restaurant_source_url != first_candidate.source_url
     photo_result = next(
         part.function_response.response
         for content in client.models.requests[-1]["contents"]
@@ -422,48 +466,64 @@ def test_agent_filters_photos_to_candidates_and_deduplicates_sources(
         and part.function_response.name == "search_restaurant_photos"
     )
     assert len(photo_result["output"]) == 1
-    assert photo_result["output"][0]["restaurant_name"] == "Restaurante Verde"
+    assert (
+        photo_result["output"][0]["restaurant_source_url"]
+        == second_candidate.source_url
+    )
 
 
-def test_agent_forces_photo_search_when_model_omits_it(
+def test_candidate_search_replaces_photos_from_an_earlier_general_search(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    candidate = make_candidate("Casa Verde", 252)
+    unrelated_photo = {
+        "image_url": "/images/files/unrelated.jpg",
+        "source_url": "https://commons.wikimedia.org/wiki/File:unrelated.jpg",
+        "restaurant_name": "Casa Verde",
+        "restaurant_source_url": "https://www.openstreetmap.org/node/999",
+    }
     configure_client(
         monkeypatch,
+        function_call_response(
+            "search_restaurant_photos",
+            {"query": "photos of vegetarian restaurants"},
+        ),
         function_call_response(
             "search_restaurants",
             {"query": "vegetarian restaurants in Madrid"},
         ),
-        text_response("He encontrado candidatos vegetarianos."),
+        text_response("Encontré un candidato."),
     )
-    matching_photo = {
-        "image_url": "/images/files/green-place.jpg",
-        "source_url": "https://commons.wikimedia.org/wiki/File:green-place.jpg",
-        "restaurant_name": "Restaurante Verde",
-        "restaurant_cuisine": "vegetarian",
-    }
-    unrelated_photo = {
-        "image_url": "/images/files/casa-mingo.jpg",
-        "source_url": "https://commons.wikimedia.org/wiki/File:casa-mingo.jpg",
-        "restaurant_name": "Casa Mingo",
-        "restaurant_cuisine": "chicken",
-    }
-    dispatched: list[str | None] = []
+    scoped_search_ids: list[UUID] = []
 
     def fake_dispatch(name: str | None, args: Any, session: Any):
-        dispatched.append(name)
-        if name == "search_restaurants":
-            return {
-                "output": {
-                    "results": [{"name": "Restaurante Verde"}],
-                }
+        if name == "search_restaurant_photos":
+            return {"output": [unrelated_photo]}
+        return {
+            "output": {
+                "results": [candidate.model_dump(mode="json")],
+                "evidence_status": "verified",
+                "evidence_message": None,
             }
-        return {"output": [unrelated_photo, matching_photo]}
+        }
+
+    def fake_candidate_photo_search(
+        request: Any,
+        session: Any,
+        *,
+        osm_place_id: UUID,
+    ) -> list[ImageSearchResult]:
+        scoped_search_ids.append(osm_place_id)
+        return [make_indexed_photo(candidate.source_url, 2521)]
 
     monkeypatch.setattr(
         restaurant_search_agent,
         "dispatch_tool_call",
         fake_dispatch,
+    )
+    monkeypatch.setattr(
+        "app.application.restaurant_discovery.search_restaurant_photos",
+        fake_candidate_photo_search,
     )
 
     response = restaurant_search_agent.run_restaurant_search_agent(
@@ -471,9 +531,67 @@ def test_agent_forces_photo_search_when_model_omits_it(
         object(),
     )
 
-    assert dispatched == ["search_restaurants", "search_restaurant_photos"]
-    assert [photo.restaurant_name for photo in response.photos] == [
-        "Restaurante Verde"
+    assert scoped_search_ids == [candidate.id]
+    assert len(response.photos) == 1
+    assert response.photos[0].restaurant_source_url == candidate.source_url
+    assert response.photos[0].image_url != unrelated_photo["image_url"]
+
+
+def test_agent_forces_photo_search_when_model_omits_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = make_candidate("Restaurante Verde", 303)
+    configure_client(
+        monkeypatch,
+        function_call_response(
+            "search_restaurants",
+            {"query": "vegetarian restaurants in Madrid"},
+        ),
+        text_response("He encontrado candidatos vegetarianos."),
+    )
+    dispatched: list[str | None] = []
+    scoped_search_ids: list[UUID] = []
+
+    def fake_dispatch(name: str | None, args: Any, session: Any):
+        dispatched.append(name)
+        if name == "search_restaurants":
+            return {
+                "output": {
+                    "results": [candidate.model_dump(mode="json")],
+                    "evidence_status": "verified",
+                    "evidence_message": None,
+                }
+            }
+        pytest.fail("The Agent must use candidate-scoped photo retrieval")
+
+    def fake_candidate_photo_search(
+        request: Any,
+        session: Any,
+        *,
+        osm_place_id: UUID,
+    ) -> list[ImageSearchResult]:
+        scoped_search_ids.append(osm_place_id)
+        return [make_indexed_photo(candidate.source_url, 3001)]
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        fake_dispatch,
+    )
+    monkeypatch.setattr(
+        "app.application.restaurant_discovery.search_restaurant_photos",
+        fake_candidate_photo_search,
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Busca restaurantes vegetarianos en Madrid y enséñame fotos.",
+        object(),
+    )
+
+    assert dispatched == ["search_restaurants"]
+    assert scoped_search_ids == [candidate.id]
+    assert [photo.restaurant_source_url for photo in response.photos] == [
+        candidate.source_url
     ]
     assert "No he encontrado fotos" not in response.answer
 
@@ -481,6 +599,7 @@ def test_agent_forces_photo_search_when_model_omits_it(
 def test_agent_explains_when_no_candidate_photos_are_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    candidate = make_candidate("Restaurante Verde", 404)
     configure_client(
         monkeypatch,
         function_call_response(
@@ -492,24 +611,23 @@ def test_agent_explains_when_no_candidate_photos_are_available(
 
     def fake_dispatch(name: str | None, args: Any, session: Any):
         if name == "search_restaurants":
-            return {"output": {"results": [{"name": "Restaurante Verde"}]}}
-        return {
-            "output": [
-                {
-                    "image_url": "/images/files/casa-mingo.jpg",
-                    "source_url": (
-                        "https://commons.wikimedia.org/wiki/File:casa-mingo.jpg"
-                    ),
-                    "restaurant_name": "Casa Mingo",
-                    "restaurant_cuisine": "chicken",
+            return {
+                "output": {
+                    "results": [candidate.model_dump(mode="json")],
+                    "evidence_status": "verified",
+                    "evidence_message": None,
                 }
-            ]
-        }
+            }
+        pytest.fail("The Agent must use candidate-scoped photo retrieval")
 
     monkeypatch.setattr(
         restaurant_search_agent,
         "dispatch_tool_call",
         fake_dispatch,
+    )
+    monkeypatch.setattr(
+        "app.application.restaurant_discovery.search_restaurant_photos",
+        lambda request, session, *, osm_place_id: [],
     )
 
     response = restaurant_search_agent.run_restaurant_search_agent(
@@ -521,6 +639,102 @@ def test_agent_explains_when_no_candidate_photos_are_available(
     assert "No he encontrado fotos indexadas asociadas a los restaurantes candidatos." in (
         response.answer
     )
+
+
+def test_agent_distinguishes_candidate_photo_search_error_from_empty_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = make_candidate("Restaurante Verde", 606)
+    client = configure_client(
+        monkeypatch,
+        function_call_response(
+            "search_restaurants",
+            {"query": "vegetarian restaurants in Madrid"},
+        ),
+        function_call_response(
+            "search_restaurant_photos",
+            {"query": "vegetarian restaurants in Madrid"},
+        ),
+        text_response("No se pudieron verificar las fotos."),
+    )
+
+    def fake_dispatch(name: str | None, args: Any, session: Any):
+        if name == "search_restaurants":
+            return {
+                "output": {
+                    "results": [candidate.model_dump(mode="json")],
+                    "evidence_status": "verified",
+                    "evidence_message": None,
+                }
+            }
+        pytest.fail("Candidate-scoped photos must bypass the general photo Tool")
+
+    def fail_photo_search(request: Any, session: Any, *, osm_place_id: UUID):
+        raise RuntimeError("photo index unavailable")
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        fake_dispatch,
+    )
+    monkeypatch.setattr(
+        "app.application.restaurant_discovery.search_restaurant_photos",
+        fail_photo_search,
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Busca restaurantes vegetarianos en Madrid y enséñame fotos.",
+        object(),
+    )
+
+    assert response.photos == []
+    assert "No he podido completar la búsqueda de fotos." in response.answer
+    photo_result = next(
+        part.function_response.response
+        for content in client.models.requests[-1]["contents"]
+        for part in content.parts or []
+        if part.function_response is not None
+        and part.function_response.name == "search_restaurant_photos"
+    )
+    assert photo_result["error"]["code"] == "tool_execution_failed"
+
+
+def test_general_photo_search_still_deduplicates_and_keeps_its_tool_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    photo = {
+        "image_url": "/images/files/photo.jpg",
+        "source_url": "https://commons.wikimedia.org/wiki/File:photo.jpg",
+        "restaurant_name": "Casa Verde",
+        "restaurant_source_url": "https://www.openstreetmap.org/node/707",
+    }
+    configure_client(
+        monkeypatch,
+        function_call_response(
+            "search_restaurant_photos",
+            {"query": "photos of restaurants", "top_k": 5},
+        ),
+        text_response("Encontré una foto."),
+    )
+    dispatched: list[str | None] = []
+
+    def fake_dispatch(name: str | None, args: Any, session: Any):
+        dispatched.append(name)
+        return {"output": [photo, photo]}
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        fake_dispatch,
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Enséñame fotos de restaurantes.",
+        object(),
+    )
+
+    assert dispatched == ["search_restaurant_photos"]
+    assert len(response.photos) == 1
 
 
 def test_agent_leads_with_unavailable_live_data_notice(
@@ -555,10 +769,17 @@ def test_agent_executes_tool_call_and_returns_model_final_answer(
     )
     session = object()
     dispatched: list[tuple[str | None, Any, Any]] = []
+    candidate = make_candidate("Example", 505)
 
     def fake_dispatch(name: str | None, args: Any, received_session: Any):
         dispatched.append((name, args, received_session))
-        return {"output": {"results": [{"name": "Example"}]}}
+        return {
+            "output": {
+                "results": [candidate.model_dump(mode="json")],
+                "evidence_status": "not_required",
+                "evidence_message": None,
+            }
+        }
 
     monkeypatch.setattr(
         restaurant_search_agent,
@@ -587,7 +808,11 @@ def test_agent_executes_tool_call_and_returns_model_final_answer(
         types.FunctionCallingConfigMode.AUTO
     )
     assert final_request["contents"][-1].parts[0].function_response.response == {
-        "output": {"results": [{"name": "Example"}]}
+        "output": {
+            "results": [candidate.model_dump(mode="json")],
+            "evidence_status": "not_required",
+            "evidence_message": None,
+        }
     }
     assert final_request["contents"][-1].parts[0].function_response.id == "call-1"
     assert all(

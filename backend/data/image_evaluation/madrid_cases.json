@@ -16,6 +16,7 @@
     "expected_image": null,
     "expected_restaurant": "Xamach",
     "should_abstain": false,
+    "manual_review": true,
     "language": "es"
   },
   {
@@ -53,6 +54,7 @@
     "expected_image": null,
     "expected_restaurant": "Xamach",
     "should_abstain": false,
+    "manual_review": true,
     "language": "en"
   },
   {

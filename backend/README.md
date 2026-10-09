@@ -68,14 +68,33 @@ To evaluate retrieval against the imported Madrid photos instead, run:
 .\.venv\Scripts\python.exe evaluate_image_search.py --cases .\data\image_evaluation\madrid_cases.json --osm-places-only --top-k 3
 ```
 
-This real-photo set contains 12 answerable Spanish and English queries for
-restaurant entrances, interiors, and dishes, plus 6 negative cases. Its
-Hit@1/Hit@3 metrics provide a retrieval baseline, while the negative similarity
-range supports threshold calibration. Search results use exact text matches
-against photo filenames and OSM restaurant metadata alongside the visual CLIP
-ranking. The displayed CLIP similarity is not a confidence score.
+This real-photo set contains 10 scored Spanish and English queries for
+restaurant entrances, interiors, and dishes, 2 cases held out for manual label
+review, and 6 out-of-corpus cases. Hit@1/Hit@K measures retrieval of the labeled
+image or restaurant result; negative non-empty rate only describes how often
+the current search returns something for an out-of-corpus query. It is **not**
+an abstention metric because image search has no rejection threshold.
+Search results use exact text matches against photo filenames and OSM
+restaurant metadata alongside the visual CLIP ranking. The displayed CLIP
+similarity is not a confidence score.
 When none of the top results match indexed text metadata, the web page labels
 them as visually close suggestions instead of implying an exact match.
+
+The two legacy queries asking for Mestizo currently expect a result named
+Xamach. They are printed for manual review and excluded from relevance scores
+until the target OSM identity is verified. To audit candidate-specific photo
+association for the three OSM places that exposed the cross-restaurant issue,
+run:
+
+```powershell
+.\.venv\Scripts\python.exe evaluate_image_search.py --attribution --top-k 3 --report "$env:TEMP\restaurant-ai-photo-attribution.json"
+```
+
+This checks the exact OSM ID foreign key and `source_url` for every returned
+photo, and that candidates with no photos in the index return no photos. It
+does not establish that an associated image is visually relevant or that no
+other images exist outside the index. The cases fail as stale if the indexed
+place name or exact OSM URL no longer matches.
 
 ## Import Madrid places and Commons photos
 
@@ -224,8 +243,53 @@ review because OSM does not provide reliable labels for atmosphere:
 .\.venv\Scripts\python.exe evaluate_restaurant_search.py --top-k 5
 ```
 
-The evaluator reports Hit@1, Hit@3, MRR@K, and Precision@3 for feature cases.
-It does not apply a similarity threshold.
+The evaluator reports Hit@1, Hit@3, MRR@K, Precision@3, explicit city/cuisine
+filter compliance, unexpected empty queries, and the manually labeled
+no-evidence case (`cocina kosher`). The 15 answerable ranking labels remain
+separate from that empty-result case and from the manual-review queries. It does
+not apply a similarity threshold. Each query requires a Gemini embedding API
+request.
+
+To save a machine-readable run record:
+
+```powershell
+.\.venv\Scripts\python.exe evaluate_restaurant_search.py --top-k 5 --report "$env:TEMP\restaurant-ai-restaurants.json"
+```
+
+## Evaluate document retrieval and RAG answers
+
+The default command evaluates retrieval only. It checks labeled source files,
+including one question requiring chunks from two documents, and reports
+Hit@K, source Recall@K, chunk Precision@K, and MRR@K:
+
+```powershell
+.\.venv\Scripts\python.exe evaluate_rag.py --top-k 3 --report "$env:TEMP\restaurant-ai-rag.json"
+```
+
+The retrieval command makes one Gemini embedding request per query. Answer
+fidelity, reference correctness, and abstention are not inferred from the
+retrieval metrics. To generate answers for manual comparison against the
+reference facts and returned excerpts, explicitly opt in:
+
+```powershell
+.\.venv\Scripts\python.exe evaluate_rag.py --top-k 3 --generate-answers --report "$env:TEMP\restaurant-ai-rag-answers.json"
+```
+
+`--generate-answers` can make up to one additional Gemini generation request
+per case with retrieved chunks. Review the answer against the cited chunk and
+reference fact; the report leaves those human judgments unset rather than
+presenting an automatic faithfulness score. `--index-missing` is a separate
+opt-in that embeds and commits the evaluation documents to the configured
+database; use it only against a disposable evaluation database.
+
+When `--report` is supplied, each evaluator fingerprints the case file and the
+complete indexed rows it uses (including stored embeddings), and records the
+Git commit/dirty state, UTC run time, model, dimensions, ranking configuration,
+and result metrics. Do not publish reports if their case text or retrieved
+document chunks are sensitive. A changed corpus fingerprint means the results
+are not directly comparable; missing OSM IDs, changed exact URLs, or missing
+labeled document sources fail validation and require the affected labels to be
+reviewed against their source data.
 
 Audit the current Madrid catalog's evidence coverage, embeddings, photo coverage,
 kosher freshness, and saved manual holdout judgments with:
