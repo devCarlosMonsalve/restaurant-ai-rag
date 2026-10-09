@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.domain.knowledge.text import (
+from app.knowledge.domain.text import (
     DEFAULT_CHUNK_SIZE_WORDS,
     DEFAULT_OVERLAP_WORDS,
     chunk_text,

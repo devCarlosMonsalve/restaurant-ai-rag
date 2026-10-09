@@ -39,24 +39,32 @@ def test_rag_evaluation_does_not_generate_answers_by_default(
         def all(self):
             return ["menu.txt"]
 
+    class FakeRetriever:
+        def __init__(self, session) -> None:
+            del session
+
+        def search_documents(self, query: str, *, top_k: int):
+            del top_k
+            return (
+                [
+                    DocumentSearchResult(
+                        document_id=uuid4(),
+                        source_name="menu.txt",
+                        chunk_index=0,
+                        content="The soup uses tomato.",
+                        similarity=0.9,
+                    )
+                ]
+                if query == "What is in the menu?"
+                else []
+            )
+
     monkeypatch.setattr(evaluate_rag, "load_cases", lambda _: cases)
     monkeypatch.setattr(evaluate_rag, "SessionLocal", FakeSession)
     monkeypatch.setattr(
         evaluate_rag,
-        "search_document_chunks",
-        lambda query, session, top_k: (
-            [
-                DocumentSearchResult(
-                    document_id=uuid4(),
-                    source_name="menu.txt",
-                    chunk_index=0,
-                    content="The soup uses tomato.",
-                    similarity=0.9,
-                )
-            ]
-            if query == "What is in the menu?"
-            else []
-        ),
+        "PostgresDocumentRetriever",
+        FakeRetriever,
     )
 
     def unexpected_generation(*args, **kwargs):
@@ -107,26 +115,37 @@ def test_rag_evaluation_generates_only_with_explicit_opt_in(
         def all(self):
             return ["menu.txt"]
 
+    class FakeRetriever:
+        def __init__(self, session) -> None:
+            del session
+
+        def search_documents(self, query: str, *, top_k: int):
+            del query, top_k
+            return [
+                DocumentSearchResult(
+                    document_id=uuid4(),
+                    source_name="menu.txt",
+                    chunk_index=0,
+                    content="The soup uses tomato.",
+                    similarity=0.9,
+                )
+            ]
+
     monkeypatch.setattr(evaluate_rag, "load_cases", lambda _: cases)
     monkeypatch.setattr(evaluate_rag, "SessionLocal", FakeSession)
     monkeypatch.setattr(
         evaluate_rag,
-        "search_document_chunks",
-        lambda query, session, top_k: [
-            DocumentSearchResult(
-                document_id=uuid4(),
-                source_name="menu.txt",
-                chunk_index=0,
-                content="The soup uses tomato.",
-                similarity=0.9,
-            )
-        ],
+        "PostgresDocumentRetriever",
+        FakeRetriever,
     )
     calls = []
     monkeypatch.setattr(
         evaluate_rag,
         "generate_grounded_answer",
-        lambda query, chunks: calls.append(query) or "Tomato soup. [menu.txt#0]",
+        lambda query, context, *, context_chunk_count: (
+            calls.append((query, context, context_chunk_count))
+            or "Tomato soup. [menu.txt#0]"
+        ),
     )
 
     evaluate_rag.run_evaluation(
@@ -136,5 +155,11 @@ def test_rag_evaluation_generates_only_with_explicit_opt_in(
         generate_answers=True,
     )
 
-    assert calls == ["Question?"]
+    assert calls == [
+        (
+            "Question?",
+            "[menu.txt#0]\nThe soup uses tomato.",
+            1,
+        )
+    ]
     assert "answer=Tomato soup." in capsys.readouterr().out

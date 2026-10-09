@@ -157,12 +157,14 @@ but are marked as unverified.
 
 ## Tool layer
 
-The application layer groups use cases by bounded context. The
-`app.application.restaurant_discovery` module coordinates restaurant and photo
-search; `app.application.knowledge` coordinates document search and grounded
-answers. These use cases receive application ports from
-`app.application.ports`; the PostgreSQL adapters own the SQLAlchemy session and
-delegate to the existing retrieval algorithms.
+The application layer groups use cases by bounded context.
+`app.application.restaurant_discovery` coordinates restaurant and photo search.
+Knowledge/RAG use cases live in `app.knowledge.application`: document retrieval
+and answer generation are separate dependencies, and the RAG use case owns the
+retrieval-to-answer coordination. Its ports are specific to Knowledge.
+`app.knowledge.infrastructure.postgres` owns the SQLAlchemy/pgvector query,
+while `app.knowledge.infrastructure.generation` owns the LangChain chain and
+Gemini generation adapter.
 
 The `app.tools` package exposes these use cases through thin Tool boundaries.
 Their docstrings are the human- and LLM-facing descriptions. The explicit
@@ -203,29 +205,55 @@ MCP, A2A, or CLI contracts:
 - `app.main`, Tools, Agents, workflows, MCP, A2A, and CLI scripts remain
   delivery/integration boundaries.
 
-The first migrated domain policies cover restaurant-search evidence,
+The migrated domain policies cover restaurant-search evidence,
 candidate-photo association, and document text preparation. Intent detection,
 feature matching, and kosher freshness live in
 `app.domain.restaurant_discovery.evidence`; exact-source photo association
 lives in `app.domain.restaurant_discovery.photo_association`; and Unicode
-normalization and text chunking live in `app.domain.knowledge.text`.
+normalization and text chunking live in `app.knowledge.domain.text`.
 PostgreSQL JSONB query generation is isolated in
 `app.infrastructure.persistence.postgres.evidence_queries`, while file reading
 for text ingestion lives in `app.infrastructure.filesystem.text_documents`.
-The remaining migration is sequenced as follows:
+Document retrieval and RAG answer orchestration now have Knowledge-specific
+infrastructure and application boundaries. Document ingestion still combines
+file processing, embedding generation, and persistence in its existing path;
+that work remains a separate migration.
 
-1. Complete and verify the application ports and PostgreSQL adapters for
-   restaurant discovery and knowledge/RAG.
-2. Separate image, document, and OSM ingestion rules from filesystem,
-   database, embedding-provider, and external-data clients.
-3. Move remaining Agent/workflow orchestration behind application use cases
-   and retire legacy service paths.
-4. Keep Tools, MCP, A2A, HTTP, and CLI as delivery adapters, preserving their
-   existing request and response contracts.
+Tools, MCP, A2A, HTTP, and CLI remain delivery/integration boundaries. Future
+work should keep their current request and response contracts while separating
+image, document, and OSM ingestion rules from filesystem, database,
+embedding-provider, and external-data clients.
 
-Those persistence-heavy search, RAG, ingestion, and Agent flows remain on the
-legacy path until their phase is migrated. Do not treat ORM rows or API schemas
-as domain entities.
+Do not treat ORM rows or API schemas as domain entities.
+
+## Knowledge/RAG generation
+
+The document-answer path composes a PostgreSQL document retriever and a
+grounded-answer generator at the HTTP or Tool boundary. The application
+retrieves chunks with the existing cosine-distance query, returns the existing
+Spanish no-documents answer without invoking a model when retrieval is empty,
+formats excerpts in retrieval order, invokes the generator, and returns all
+retrieved chunks as sources. The generator receives only the prepared question
+and excerpt context; it has no database dependency.
+
+Generation uses `ChatPromptTemplate`, LCEL, `RunnableLambda`, and
+`StrOutputParser`. The official
+[`ChatGoogleGenerativeAI` integration](https://docs.langchain.com/oss/python/integrations/chat/google_generative_ai)
+uses the Google GenAI SDK's content-generation interface. The current RAG
+provider call uses the Interactions API and explicitly sets `store=False`;
+the LangChain chat adapter does not establish equivalent support for that
+Interactions API parameter. The adapter is therefore not substituted and
+`langchain-google-genai` is not added as a dependency. The existing Google
+client remains inside `RunnableLambda` to preserve the model, request options,
+and privacy behavior. See Google's
+[Interactions API documentation](https://ai.google.dev/gemini-api/docs/interactions-overview).
+
+Focused Knowledge/RAG tests, which use fake embeddings, sessions, and model
+responses and do not call Gemini, can be run from `backend` with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_document_search.py tests\test_rag.py tests\test_application_use_cases.py tests\test_retrieval_tools.py tests\test_rag_evaluation.py tests\test_observability.py tests\test_text_processing.py tests\test_api.py tests\test_mcp_server.py
+```
 
 ## Restaurant search Agent
 

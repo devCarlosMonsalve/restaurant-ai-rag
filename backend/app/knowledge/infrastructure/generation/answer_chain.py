@@ -1,5 +1,3 @@
-from collections.abc import Sequence
-
 from google import genai
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
@@ -12,7 +10,6 @@ from app.observability import (
     disable_automatic_langchain_tracing,
     traced_span,
 )
-from app.schemas import DocumentSearchResult
 
 GEMINI_GENERATION_MODEL = "gemini-3.8-flash"
 
@@ -83,29 +80,27 @@ _RAG_GENERATION_CHAIN = (
 
 def generate_grounded_answer(
     question: str,
-    chunks: Sequence[DocumentSearchResult],
+    context: str,
+    *,
+    context_chunk_count: int,
 ) -> str:
     if not question.strip():
         raise ValueError("Question cannot be empty")
-    if not chunks:
-        raise ValueError("At least one retrieved chunk is required")
+    if not context.strip():
+        raise ValueError("Retrieved context cannot be empty")
 
-    excerpts = "\n\n".join(
-        f"[{chunk.source_name}#{chunk.chunk_index}]\n{chunk.content}"
-        for chunk in chunks
-    )
     with traced_span(
         "rag.generate_answer",
         {
             "gen_ai.request.model": GEMINI_GENERATION_MODEL,
-            "rag.context_chunk_count": len(chunks),
+            "rag.context_chunk_count": context_chunk_count,
         },
     ):
         with disable_automatic_langchain_tracing():
             answer = _RAG_GENERATION_CHAIN.invoke(
                 {
                     "question": question,
-                    "excerpts": excerpts,
+                    "excerpts": context,
                 }
             )
 

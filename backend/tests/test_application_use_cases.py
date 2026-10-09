@@ -3,9 +3,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.application import knowledge, restaurant_discovery
+from app.application import (
+    document_answer as document_answer_use_case,
+    restaurant_discovery,
+)
+from app.knowledge.application import answer_question, search_documents
 from app.schemas import (
     DocumentSearchRequest,
+    DocumentSearchResult,
     ImageSearchResult,
     ImageSearchRequest,
     OsmRestaurantSearchRequest,
@@ -147,7 +152,7 @@ def test_search_documents_use_case_delegates_to_repository() -> None:
             calls.update(query=query, top_k=top_k)
             return expected
 
-    response = knowledge.search_documents(
+    response = search_documents.search_documents(
         DocumentSearchRequest(query="menu", top_k=3),
         FakeRepository(),
     )
@@ -159,20 +164,44 @@ def test_search_documents_use_case_delegates_to_repository() -> None:
     }
 
 
-def test_answer_from_documents_use_case_delegates_to_repository() -> None:
-    expected = sentinel.answer
-    calls = {}
+def test_answer_from_documents_use_case_uses_retriever_and_generator() -> None:
+    chunks = [
+        DocumentSearchResult(
+            document_id=uuid4(),
+            source_name="menu.txt",
+            chunk_index=0,
+            content="The pasta is fresh.",
+            similarity=0.91,
+        )
+    ]
 
-    class FakeRepository:
-        def answer_from_documents(self, request):
-            calls["request"] = request
-            return expected
+    class FakeRetriever:
+        def search_documents(self, query, *, top_k):
+            assert query == "question"
+            assert top_k == 3
+            return chunks
 
-    request = RagQuestionRequest(query="question", top_k=3)
-    response = knowledge.answer_from_documents(request, FakeRepository())
+    def fake_generator(question, context, /, *, context_chunk_count):
+        assert question == "question"
+        assert context == "[menu.txt#0]\nThe pasta is fresh."
+        assert context_chunk_count == 1
+        return "Grounded answer."
 
-    assert response is expected
-    assert calls == {"request": request}
+    response = answer_question.answer_from_documents(
+        RagQuestionRequest(query="question", top_k=3),
+        FakeRetriever(),
+        fake_generator,
+    )
+
+    assert response.answer == "Grounded answer."
+    assert response.sources == [
+        RagSource(
+            document_id=chunks[0].document_id,
+            source_name="menu.txt",
+            chunk_index=0,
+            similarity=0.91,
+        )
+    ]
 
 
 def test_answer_from_documents_with_photos_keeps_evidence_separate(
@@ -204,13 +233,14 @@ def test_answer_from_documents_with_photos_keeps_evidence_separate(
     )
     calls = {}
 
-    def fake_document_answer(received_request, repository):
+    def fake_document_answer(received_request, retriever, generate_answer):
         assert received_request is request
-        assert repository is sentinel.knowledge_repository
+        assert retriever is sentinel.document_retriever
+        assert generate_answer is sentinel.answer_generator
         return document_answer
 
     monkeypatch.setattr(
-        knowledge,
+        document_answer_use_case,
         "answer_from_documents",
         fake_document_answer,
     )
@@ -221,14 +251,15 @@ def test_answer_from_documents_with_photos_keeps_evidence_separate(
         return [photo]
 
     monkeypatch.setattr(
-        knowledge,
+        document_answer_use_case,
         "search_restaurant_photos",
         fake_search_restaurant_photos,
     )
 
-    response = knowledge.answer_from_documents_with_photos(
+    response = document_answer_use_case.answer_from_documents_with_photos(
         request,
-        sentinel.knowledge_repository,
+        sentinel.document_retriever,
+        sentinel.answer_generator,
         sentinel.restaurant_repository,
     )
 
@@ -260,13 +291,14 @@ def test_answer_from_documents_with_photos_skips_search_by_default(
     document_answer = RagAnswerResponse(answer="Text answer.", sources=[])
     request = RagQuestionWithPhotosRequest(query="tomato pasta", top_k=3)
 
-    def fake_document_answer(received_request, repository):
+    def fake_document_answer(received_request, retriever, generate_answer):
         assert received_request is request
-        assert repository is sentinel.knowledge_repository
+        assert retriever is sentinel.document_retriever
+        assert generate_answer is sentinel.answer_generator
         return document_answer
 
     monkeypatch.setattr(
-        knowledge,
+        document_answer_use_case,
         "answer_from_documents",
         fake_document_answer,
     )
@@ -281,14 +313,15 @@ def test_answer_from_documents_with_photos_skips_search_by_default(
         pytest.fail("Photo search must be opt-in")
 
     monkeypatch.setattr(
-        knowledge,
+        document_answer_use_case,
         "search_restaurant_photos",
         unexpected_photo_search,
     )
 
-    response = knowledge.answer_from_documents_with_photos(
+    response = document_answer_use_case.answer_from_documents_with_photos(
         request,
-        sentinel.knowledge_repository,
+        sentinel.document_retriever,
+        sentinel.answer_generator,
         sentinel.restaurant_repository,
     )
 
@@ -307,13 +340,14 @@ def test_answer_from_documents_with_photos_surfaces_search_errors(
         include_photos=True,
     )
 
-    def return_document_answer(received_request, repository):
+    def return_document_answer(received_request, retriever, generate_answer):
         assert received_request is request
-        assert repository is sentinel.knowledge_repository
+        assert retriever is sentinel.document_retriever
+        assert generate_answer is sentinel.answer_generator
         return document_answer
 
     monkeypatch.setattr(
-        knowledge,
+        document_answer_use_case,
         "answer_from_documents",
         return_document_answer,
     )
@@ -328,14 +362,15 @@ def test_answer_from_documents_with_photos_surfaces_search_errors(
         raise RuntimeError("Image retrieval failed")
 
     monkeypatch.setattr(
-        knowledge,
+        document_answer_use_case,
         "search_restaurant_photos",
         fail_photo_search,
     )
 
     with pytest.raises(RuntimeError, match="Image retrieval failed"):
-        knowledge.answer_from_documents_with_photos(
+        document_answer_use_case.answer_from_documents_with_photos(
             request,
-            sentinel.knowledge_repository,
+            sentinel.document_retriever,
+            sentinel.answer_generator,
             sentinel.restaurant_repository,
         )

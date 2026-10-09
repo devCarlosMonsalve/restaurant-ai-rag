@@ -104,11 +104,12 @@ def test_answer_from_documents_delegates_to_existing_rag_service(
     expected = RagAnswerResponse(answer="Answer [menu.txt#0]", sources=[])
     calls = {}
 
-    def fake_answer(request, repository):
+    def fake_answer(request, repository, generate_answer):
         calls.update(
             query=request.query,
             top_k=request.top_k,
             session=repository.session,
+            has_generator=callable(generate_answer),
         )
         return expected
 
@@ -128,6 +129,7 @@ def test_answer_from_documents_delegates_to_existing_rag_service(
         "query": "how is pasta prepared?",
         "top_k": 4,
         "session": sentinel.session,
+        "has_generator": True,
     }
 
 

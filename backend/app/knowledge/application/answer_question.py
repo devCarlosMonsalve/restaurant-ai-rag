@@ -1,24 +1,38 @@
-from sqlalchemy.orm import Session
+from collections.abc import Sequence
 
-from app.answer_generation import generate_grounded_answer
-from app.document_search import search_document_chunks
+from app.knowledge.application.ports import (
+    DocumentRetriever,
+    GroundedAnswerGenerator,
+)
 from app.observability import traced_span
-from app.schemas import RagAnswerResponse, RagQuestionRequest, RagSource
+from app.schemas import (
+    DocumentSearchResult,
+    RagAnswerResponse,
+    RagQuestionRequest,
+    RagSource,
+)
 
 NO_DOCUMENTS_ANSWER = "No encontré documentos indexados para responder la pregunta."
 
 
-def answer_with_rag(
+def build_retrieved_context(chunks: Sequence[DocumentSearchResult]) -> str:
+    return "\n\n".join(
+        f"[{chunk.source_name}#{chunk.chunk_index}]\n{chunk.content}"
+        for chunk in chunks
+    )
+
+
+def answer_from_documents(
     request: RagQuestionRequest,
-    session: Session,
+    retriever: DocumentRetriever,
+    generate_answer: GroundedAnswerGenerator,
 ) -> RagAnswerResponse:
     with traced_span(
         "rag.answer_from_documents",
         {"retrieval.top_k": request.top_k},
     ) as span:
-        chunks = search_document_chunks(
+        chunks = retriever.search_documents(
             request.query,
-            session,
             top_k=request.top_k,
         )
         span.set_attribute("rag.retrieved_chunk_count", len(chunks))
@@ -26,7 +40,11 @@ def answer_with_rag(
             span.set_attribute("rag.result", "no_documents")
             return RagAnswerResponse(answer=NO_DOCUMENTS_ANSWER, sources=[])
 
-        answer = generate_grounded_answer(request.query, chunks)
+        answer = generate_answer(
+            request.query,
+            build_retrieved_context(chunks),
+            context_chunk_count=len(chunks),
+        )
         sources = [
             RagSource(
                 document_id=chunk.document_id,

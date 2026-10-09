@@ -1,6 +1,6 @@
 import pytest
 
-from app.domain.knowledge.text import chunk_text, clean_text
+from app.knowledge.domain.text import chunk_text, clean_text
 from app.infrastructure.filesystem.text_documents import ingest_txt
 
 

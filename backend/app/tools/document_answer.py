@@ -1,10 +1,13 @@
 from sqlalchemy.orm import Session
 
-from app.application.knowledge import (
+from app.knowledge.application.answer_question import (
     answer_from_documents as answer_from_documents_use_case,
 )
-from app.infrastructure.persistence.postgres.knowledge import (
-    PostgresKnowledgeAdapter,
+from app.knowledge.infrastructure.generation.answer_chain import (
+    generate_grounded_answer,
+)
+from app.knowledge.infrastructure.postgres.retriever import (
+    PostgresDocumentRetriever,
 )
 from app.schemas import RagAnswerResponse, RagQuestionRequest
 
@@ -39,4 +42,8 @@ def answer_from_documents(
         A generated answer and the source chunks used by the RAG service.
     """
     request = RagQuestionRequest(query=query, top_k=top_k)
-    return answer_from_documents_use_case(request, PostgresKnowledgeAdapter(session))
+    return answer_from_documents_use_case(
+        request,
+        PostgresDocumentRetriever(session),
+        generate_grounded_answer,
+    )

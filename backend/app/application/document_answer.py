@@ -1,39 +1,24 @@
-from app.application.ports import KnowledgePort, RestaurantDiscoveryPort
+from app.application.ports import RestaurantDiscoveryPort
 from app.application.restaurant_discovery import search_restaurant_photos
 from app.image_presentation import image_file_url
+from app.knowledge.application.answer_question import answer_from_documents
+from app.knowledge.application.ports import (
+    DocumentRetriever,
+    GroundedAnswerGenerator,
+)
 from app.observability import traced_span
 from app.schemas import (
-    DocumentSearchRequest,
-    DocumentSearchResult,
     ImageSearchRequest,
-    RagPhoto,
-    RagAnswerResponse,
     RagAnswerWithPhotosResponse,
-    RagQuestionRequest,
+    RagPhoto,
     RagQuestionWithPhotosRequest,
 )
 
 
-def search_documents(
-    request: DocumentSearchRequest,
-    repository: KnowledgePort,
-) -> list[DocumentSearchResult]:
-    return repository.search_documents(
-        request.query,
-        top_k=request.top_k,
-    )
-
-
-def answer_from_documents(
-    request: RagQuestionRequest,
-    repository: KnowledgePort,
-) -> RagAnswerResponse:
-    return repository.answer_from_documents(request)
-
-
 def answer_from_documents_with_photos(
     request: RagQuestionWithPhotosRequest,
-    knowledge_repository: KnowledgePort,
+    retriever: DocumentRetriever,
+    generate_answer: GroundedAnswerGenerator,
     restaurant_repository: RestaurantDiscoveryPort,
 ) -> RagAnswerWithPhotosResponse:
     with traced_span(
@@ -43,7 +28,11 @@ def answer_from_documents_with_photos(
             "photos.enabled": request.include_photos,
         },
     ) as span:
-        answer = answer_from_documents(request, knowledge_repository)
+        answer = answer_from_documents(
+            request,
+            retriever,
+            generate_answer,
+        )
         photos = []
         if request.include_photos:
             image_results = search_restaurant_photos(

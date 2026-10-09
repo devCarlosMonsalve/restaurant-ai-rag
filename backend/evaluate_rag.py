@@ -6,15 +6,20 @@ from typing import NotRequired, TypedDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.answer_generation import (
+from app.knowledge.application.answer_question import (
+    NO_DOCUMENTS_ANSWER,
+    build_retrieved_context,
+)
+from app.knowledge.infrastructure.generation.answer_chain import (
     GEMINI_GENERATION_MODEL,
     generate_grounded_answer,
 )
 from app.database import SessionLocal
 from app.document_ingestion import ingest_txt_to_database
-from app.document_search import search_document_chunks
 from app.models.document_chunk import DocumentChunk
-from app.rag import NO_DOCUMENTS_ANSWER
+from app.knowledge.infrastructure.postgres.retriever import (
+    PostgresDocumentRetriever,
+)
 from app.embeddings import EMBEDDING_DIMENSIONS, GEMINI_EMBEDDING_MODEL
 from evaluation_utils import (
     build_run_metadata,
@@ -95,6 +100,7 @@ def run_evaluation(
     reciprocal_ranks: list[float] = []
     case_reports: list[dict[str, object]] = []
     with SessionLocal() as session:
+        retriever = PostgresDocumentRetriever(session)
         if index_missing:
             index_missing_documents(session)
 
@@ -137,13 +143,17 @@ def run_evaluation(
             corpus_row_count = 0
 
         for case in cases:
-            results = search_document_chunks(case["query"], session, top_k=top_k)
+            results = retriever.search_documents(case["query"], top_k=top_k)
             sources = [result.source_name for result in results]
             expected_sources = set(_expected_sources(case))
             answer: str | None = None
             if generate_answers:
                 if results:
-                    answer = generate_grounded_answer(case["query"], results)
+                    answer = generate_grounded_answer(
+                        case["query"],
+                        build_retrieved_context(results),
+                        context_chunk_count=len(results),
+                    )
                 else:
                     answer = NO_DOCUMENTS_ANSWER
 

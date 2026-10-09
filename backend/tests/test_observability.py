@@ -13,12 +13,14 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
-from app import answer_generation
-from app import document_search, observability, rag
+from app import observability
 from app.agents import restaurant_search_agent
 from app.agents.schemas import RestaurantSearchAgentResponse
 from app.core.config import settings
-from app.schemas import DocumentSearchResult, RagQuestionRequest
+from app.knowledge.application import answer_question
+from app.knowledge.infrastructure.generation import answer_chain
+from app.knowledge.infrastructure.postgres import retriever
+from app.schemas import RagQuestionRequest
 from app.workflows import restaurant_photo_search
 from app.workflows.schemas import RestaurantPhotoWorkflowRequest
 
@@ -97,23 +99,19 @@ def test_rag_generation_disables_automatic_langsmith_tracing(
     class FakeChain:
         def invoke(self, payload):
             assert payload["question"] == "synthetic question"
+            assert payload["excerpts"] == (
+                "[synthetic.txt#0]\nsynthetic evidence"
+            )
             assert _tracing_v2_is_enabled() is False
             return "grounded answer"
 
     monkeypatch.setenv("LANGCHAIN_TRACING_V2", "true")
-    monkeypatch.setattr(answer_generation, "_RAG_GENERATION_CHAIN", FakeChain())
+    monkeypatch.setattr(answer_chain, "_RAG_GENERATION_CHAIN", FakeChain())
 
-    answer = answer_generation.generate_grounded_answer(
+    answer = answer_chain.generate_grounded_answer(
         "synthetic question",
-        [
-            DocumentSearchResult(
-                document_id=uuid4(),
-                source_name="synthetic.txt",
-                chunk_index=0,
-                content="synthetic evidence",
-                similarity=0.9,
-            )
-        ],
+        "[synthetic.txt#0]\nsynthetic evidence",
+        context_chunk_count=1,
     )
 
     assert _tracing_v2_is_enabled() is True
@@ -175,19 +173,20 @@ def test_synthetic_rag_trace_is_hierarchical_and_excludes_content(
         del _query
         return [0.1]
 
-    monkeypatch.setattr(document_search, "embed_search_query", fake_embed_query)
+    monkeypatch.setattr(retriever, "embed_search_query", fake_embed_query)
     monkeypatch.setattr(settings, "gemini_api_key", SecretStr(api_key_value))
     monkeypatch.setattr(
-        answer_generation.genai,
+        answer_chain.genai,
         "Client",
         fake_client,
     )
     monkeypatch.setenv("LANGCHAIN_TRACING_V2", "true")
 
     try:
-        response = rag.answer_with_rag(
+        response = answer_question.answer_from_documents(
             RagQuestionRequest(query=question, top_k=3),
-            cast(Session, FakeSession()),
+            retriever.PostgresDocumentRetriever(cast(Session, FakeSession())),
+            answer_chain.generate_grounded_answer,
         )
         spans = exporter.get_finished_spans()
     finally:
@@ -219,7 +218,7 @@ def test_synthetic_rag_trace_is_hierarchical_and_excludes_content(
         "retrieval.result_count": 1,
     }
     assert generation.attributes == {
-        "gen_ai.request.model": answer_generation.GEMINI_GENERATION_MODEL,
+        "gen_ai.request.model": answer_chain.GEMINI_GENERATION_MODEL,
         "rag.context_chunk_count": 1,
     }
 

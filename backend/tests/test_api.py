@@ -202,7 +202,7 @@ def test_document_search_returns_ranked_chunks(
     ]
     calls = {}
 
-    def fake_search(request, session):
+    def fake_search(request, retriever):
         calls["query"] = request.query
         calls["top_k"] = request.top_k
         return expected_results
@@ -261,10 +261,18 @@ def test_ask_documents_returns_answer_and_sources(
     )
     calls = {}
 
-    def fake_answer(request, knowledge_repository, restaurant_repository):
+    def fake_answer(
+        request,
+        retriever,
+        generate_answer,
+        restaurant_repository,
+    ):
         calls["query"] = request.query
         calls["top_k"] = request.top_k
         calls["include_photos"] = request.include_photos
+        calls["retriever_has_session"] = hasattr(retriever, "session")
+        calls["has_generator"] = callable(generate_answer)
+        calls["has_restaurant_repository"] = restaurant_repository is not None
         return expected_response
 
     monkeypatch.setattr("app.main.answer_documents_use_case", fake_answer)
@@ -289,6 +297,9 @@ def test_ask_documents_returns_answer_and_sources(
         "query": "¿Cómo se prepara la pasta?",
         "top_k": 3,
         "include_photos": True,
+        "retriever_has_session": True,
+        "has_generator": True,
+        "has_restaurant_repository": True,
     }
 
 

@@ -16,17 +16,22 @@ from app.agents.schemas import (
     RestaurantSearchAgentRequest,
     RestaurantSearchAgentResponse,
 )
-from app.application.knowledge import (
+from app.application.document_answer import (
     answer_from_documents_with_photos as answer_documents_use_case,
-    search_documents as search_documents_use_case,
 )
 from app.application.restaurant_discovery import (
     search_restaurant_photos as search_restaurant_photos_use_case,
     search_restaurants as search_restaurants_use_case,
 )
 from app.database import get_db
-from app.infrastructure.persistence.postgres.knowledge import (
-    PostgresKnowledgeAdapter,
+from app.knowledge.application.search_documents import (
+    search_documents as search_documents_use_case,
+)
+from app.knowledge.infrastructure.generation.answer_chain import (
+    generate_grounded_answer,
+)
+from app.knowledge.infrastructure.postgres.retriever import (
+    PostgresDocumentRetriever,
 )
 from app.infrastructure.persistence.postgres.restaurant_discovery import (
     PostgresRestaurantDiscoveryAdapter,
@@ -167,7 +172,7 @@ def search_documents(
     request: DocumentSearchRequest,
     db: Session = Depends(get_db),
 ) -> list[DocumentSearchResult]:
-    return search_documents_use_case(request, PostgresKnowledgeAdapter(db))
+    return search_documents_use_case(request, PostgresDocumentRetriever(db))
 
 
 @app.post(
@@ -181,7 +186,8 @@ def ask_documents(
 ) -> RagAnswerWithPhotosResponse:
     return answer_documents_use_case(
         request,
-        PostgresKnowledgeAdapter(db),
+        PostgresDocumentRetriever(db),
+        generate_grounded_answer,
         PostgresRestaurantDiscoveryAdapter(db),
     )
 
