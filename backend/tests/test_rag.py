@@ -5,7 +5,7 @@ from pydantic import SecretStr
 
 from app import answer_generation, rag
 from app.core.config import settings
-from app.schemas import DocumentSearchResult, RagQuestionRequest
+from app.schemas import DocumentSearchResult, RagQuestionRequest, RagSource
 
 
 class FakeModels:
@@ -67,6 +67,39 @@ def test_generate_grounded_answer_sends_question_and_source(
     assert client.closed
 
 
+def test_generate_grounded_answer_includes_multiple_chunks_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("test-api-key"))
+    client = FakeClient(
+        "test-api-key",
+        "Pasta is made daily [menu.txt#0], and uses tomatoes [prep.txt#2].",
+    )
+    monkeypatch.setattr(answer_generation.genai, "Client", lambda **kwargs: client)
+    chunks = [
+        make_chunk(),
+        DocumentSearchResult(
+            document_id="d4ada293-47d1-492e-b6f3-ff27aa6624d2",
+            source_name="prep.txt",
+            chunk_index=2,
+            content="The sauce uses tomatoes.",
+            similarity=0.87,
+        ),
+    ]
+
+    answer = answer_generation.generate_grounded_answer(
+        "How is the pasta served?",
+        chunks,
+    )
+
+    assert answer == "Pasta is made daily [menu.txt#0], and uses tomatoes [prep.txt#2]."
+    assert client.interactions.request["input"] == (
+        "Question:\nHow is the pasta served?\n\nRetrieved excerpts:\n"
+        "[menu.txt#0]\nFresh pasta is made daily.\n\n"
+        "[prep.txt#2]\nThe sauce uses tomatoes."
+    )
+
+
 def test_generate_grounded_answer_rejects_empty_model_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -104,3 +137,52 @@ def test_rag_returns_no_documents_message_without_calling_generator(
 
     assert response.answer == rag.NO_DOCUMENTS_ANSWER
     assert response.sources == []
+
+
+def test_rag_preserves_sources_for_all_retrieved_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = [
+        make_chunk(),
+        DocumentSearchResult(
+            document_id="d4ada293-47d1-492e-b6f3-ff27aa6624d2",
+            source_name="prep.txt",
+            chunk_index=2,
+            content="The sauce uses tomatoes.",
+            similarity=0.87,
+        ),
+    ]
+    generator_calls: list[tuple[str, list[DocumentSearchResult]]] = []
+    monkeypatch.setattr(
+        rag,
+        "search_document_chunks",
+        lambda query, session, *, top_k: chunks,
+    )
+    monkeypatch.setattr(
+        rag,
+        "generate_grounded_answer",
+        lambda query, retrieved: generator_calls.append((query, retrieved))
+        or "Pasta uses tomato sauce [prep.txt#2].",
+    )
+
+    response = rag.answer_with_rag(
+        RagQuestionRequest(query="How is the pasta served?", top_k=2),
+        session=object(),
+    )
+
+    assert generator_calls == [("How is the pasta served?", chunks)]
+    assert response.answer == "Pasta uses tomato sauce [prep.txt#2]."
+    assert response.sources == [
+        RagSource(
+            document_id=chunks[0].document_id,
+            source_name="menu.txt",
+            chunk_index=0,
+            similarity=0.91,
+        ),
+        RagSource(
+            document_id=chunks[1].document_id,
+            source_name="prep.txt",
+            chunk_index=2,
+            similarity=0.87,
+        ),
+    ]

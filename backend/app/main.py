@@ -14,7 +14,7 @@ from app.agents.schemas import (
     RestaurantSearchAgentResponse,
 )
 from app.application.knowledge import (
-    answer_from_documents as answer_documents_use_case,
+    answer_from_documents_with_photos as answer_documents_use_case,
     search_documents as search_documents_use_case,
 )
 from app.application.restaurant_discovery import (
@@ -33,7 +33,7 @@ from app.schemas import (
     OsmPlaceRead,
     OsmRestaurantSearchRequest,
     OsmRestaurantSearchResponse,
-    RagAnswerResponse,
+    RagAnswerWithPhotosResponse,
     RagQuestionRequest,
     RestaurantCreate,
     RestaurantRead,
@@ -141,13 +141,13 @@ def search_documents(
 
 @app.post(
     "/documents/ask",
-    response_model=RagAnswerResponse,
+    response_model=RagAnswerWithPhotosResponse,
     tags=["documents"],
 )
 def ask_documents(
     request: RagQuestionRequest,
     db: Session = Depends(get_db),
-) -> RagAnswerResponse:
+) -> RagAnswerWithPhotosResponse:
     return answer_documents_use_case(request, db)
 
 

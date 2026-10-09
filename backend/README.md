@@ -349,7 +349,14 @@ The adapter intentionally keeps `google-genai` and the current
 provider request and its explicit storage setting instead of assuming that a
 different chat-model adapter has identical privacy behavior. The prompt text,
 Gemini model, temperature, token limit, no-document path, and public RAG
-response schema remain unchanged. The chain currently parses plain text; it
+answer and source fields remain unchanged. The HTTP `/documents/ask` response
+also includes a separate `photos` field; those visual results are retrieved
+with the original question and are never passed to the text generator. They
+are not document citations or evidence for the generated answer. The
+`answer_from_documents` Tool retains its answer-and-sources contract. Each
+HTTP request also invokes the existing OpenCLIP text-to-image search over the
+default image corpus, adding its model-load and retrieval cost. The chain
+currently parses plain text; it
 does not independently validate citations or change the retrieved sources.
 
 `langchain-core` is a direct dependency because the application imports its

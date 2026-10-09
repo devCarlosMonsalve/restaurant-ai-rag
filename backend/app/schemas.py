@@ -142,3 +142,7 @@ class RagSource(BaseModel):
 class RagAnswerResponse(BaseModel):
     answer: str
     sources: list[RagSource]
+
+
+class RagAnswerWithPhotosResponse(RagAnswerResponse):
+    photos: list[ImageSearchResult] = Field(default_factory=list)

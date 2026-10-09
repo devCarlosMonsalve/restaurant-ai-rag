@@ -7,8 +7,9 @@ from app.schemas import (
     DocumentSearchResult,
     OsmRestaurantSearchResult,
     OsmRestaurantSearchResponse,
-    RagAnswerResponse,
+    RagAnswerWithPhotosResponse,
     RagSource,
+    ImageSearchResult,
 )
 from app.models.osm_place import OsmPlace
 
@@ -234,7 +235,7 @@ def test_ask_documents_returns_answer_and_sources(
     monkeypatch,
 ) -> None:
     document_id = "e4ada293-47d1-492e-b6f3-ff27aa6624d1"
-    expected_response = RagAnswerResponse(
+    expected_response = RagAnswerWithPhotosResponse(
         answer="La pasta fresca se prepara cada día [menu.txt#0].",
         sources=[
             RagSource(
@@ -242,6 +243,14 @@ def test_ask_documents_returns_answer_and_sources(
                 source_name="menu.txt",
                 chunk_index=0,
                 similarity=0.91,
+            )
+        ],
+        photos=[
+            ImageSearchResult(
+                id="d4ada293-47d1-492e-b6f3-ff27aa6624d2",
+                source_name="pasta.jpg",
+                image_path="C:/images/pasta.jpg",
+                similarity=0.88,
             )
         ],
     )
@@ -262,6 +271,7 @@ def test_ask_documents_returns_answer_and_sources(
     assert response.status_code == 200
     assert response.json()["answer"] == expected_response.answer
     assert response.json()["sources"][0]["source_name"] == "menu.txt"
+    assert response.json()["photos"][0]["source_name"] == "pasta.jpg"
     assert calls == {"query": "¿Cómo se prepara la pasta?", "top_k": 3}
 
 
