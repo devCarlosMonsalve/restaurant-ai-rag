@@ -3,9 +3,8 @@ import re
 import unicodedata
 from typing import Any, Literal, TypedDict
 
-from google import genai
 from google.genai import types
-from google.genai.errors import APIError
+from litellm import Router
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from pydantic import ValidationError
@@ -24,10 +23,14 @@ from app.observability import (
     disable_automatic_langchain_tracing,
     traced_span,
 )
+from app.model_routing import (
+    ModelRouteError,
+    call_restaurant_search_model,
+    create_restaurant_search_router,
+)
 from app.schemas import ImageSearchRequest, OsmRestaurantSearchResult
 from app.tools.registry import (
     dispatch_tool_call,
-    get_function_declarations,
     serialize_tool_result,
 )
 
@@ -59,15 +62,12 @@ that limitation in the first sentence before presenting any candidates. Never
 infer availability or prices.
 """
 
-_TOOL_BUNDLE = types.Tool(function_declarations=get_function_declarations())
-
-
 class RestaurantSearchAgentError(RuntimeError):
     """The Agent could not produce a valid final response."""
 
 
 class _AgentContext(TypedDict):
-    client: genai.Client
+    router: Router
     session: Session
 
 
@@ -104,29 +104,23 @@ def run_restaurant_search_agent(
             "GEMINI_API_KEY must be set to run the restaurant search Agent"
         )
 
-    try:
-        with genai.Client(api_key=api_key.get_secret_value()) as client:
-            with traced_span(
-                "agent.restaurant_search",
-                {
-                    "gen_ai.request.model": RESTAURANT_SEARCH_AGENT_MODEL,
-                    "agent.max_tool_calls": MAX_TOOL_CALLS,
-                    "agent.max_model_turns": MAX_MODEL_TURNS,
-                },
-            ) as span:
-                with disable_automatic_langchain_tracing():
-                    response = _run_conversation(client, query, session)
-                span.set_attribute("agent.photo_count", len(response.photos))
-                return response
-    except APIError as error:
-        logger.exception("Gemini request failed for restaurant search Agent")
-        raise RestaurantSearchAgentError(
-            "Gemini could not complete the restaurant search Agent request"
-        ) from error
+    router = create_restaurant_search_router(api_key.get_secret_value())
+    with traced_span(
+        "agent.restaurant_search",
+        {
+            "gen_ai.request.model": RESTAURANT_SEARCH_AGENT_MODEL,
+            "agent.max_tool_calls": MAX_TOOL_CALLS,
+            "agent.max_model_turns": MAX_MODEL_TURNS,
+        },
+    ) as span:
+        with disable_automatic_langchain_tracing():
+            response = _run_conversation(router, query, session)
+        span.set_attribute("agent.photo_count", len(response.photos))
+        return response
 
 
 def _run_conversation(
-    client: genai.Client,
+    router: Router,
     query: str,
     session: Session,
 ) -> RestaurantSearchAgentResponse:
@@ -155,7 +149,7 @@ def _run_conversation(
             "pending_answer": None,
             "final_response": None,
         },
-        context={"client": client, "session": session},
+        context={"router": router, "session": session},
         config={"recursion_limit": MAX_MODEL_TURNS * 2 + 3},
     )
     final_response = result["final_response"]
@@ -429,24 +423,6 @@ def _call_model_node(
             "\nThe host will prepend this capability limitation to your "
             f"final answer: {capability_notice} Do not repeat it."
         )
-    config = types.GenerateContentConfig(
-        system_instruction=system_instruction,
-        temperature=0.2,
-        max_output_tokens=1024,
-        tools=[_TOOL_BUNDLE] if tools_enabled else None,
-        tool_config=types.ToolConfig(
-            function_calling_config=types.FunctionCallingConfig(
-                mode=(
-                    types.FunctionCallingConfigMode.AUTO
-                    if tools_enabled
-                    else types.FunctionCallingConfigMode.NONE
-                )
-            )
-        ),
-        automatic_function_calling=types.AutomaticFunctionCallingConfig(
-            disable=True
-        ),
-    )
     with traced_span(
         "agent.model_call",
         {
@@ -456,11 +432,15 @@ def _call_model_node(
             "agent.tools_enabled": tools_enabled,
         },
     ):
-        response = runtime.context["client"].models.generate_content(
-            model=RESTAURANT_SEARCH_AGENT_MODEL,
-            contents=state["contents"],
-            config=config,
-        )
+        try:
+            response = call_restaurant_search_model(
+                runtime.context["router"],
+                state["contents"],
+                system_instruction,
+                tools_enabled=tools_enabled,
+            )
+        except ModelRouteError as error:
+            raise RestaurantSearchAgentError(str(error)) from error
     candidate = response.candidates[0] if response.candidates else None
     model_content = candidate.content if candidate is not None else None
     if model_content is None:

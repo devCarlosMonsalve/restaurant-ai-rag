@@ -203,27 +203,41 @@ until there is a concrete need to separate their persistence dependencies.
 ## Restaurant search Agent
 
 `POST /agents/restaurant-search` runs the first Agent using the existing
-`gemini-3.8-flash` model and the `google-genai` SDK. A request-scoped LangGraph
-`StateGraph` makes the orchestration explicit without changing the model client
-or Tool registry. Its `call_model` node handles Gemini turns, `execute_tools`
-validates and runs Tool calls, `force_photo_search` enforces an explicit photo
-request if the model omitted it, and `finalize` constructs the existing
-response. Conditional edges route between these nodes; the graph state is
-discarded after each request and has no checkpointer or persistent memory.
+`gemini-3.8-flash` model through a local LiteLLM Router. A request-scoped
+LangGraph `StateGraph` makes the orchestration explicit. Its `call_model` node
+handles model turns, `execute_tools` validates and runs Tool calls,
+`force_photo_search` enforces an explicit photo request if the model omitted
+it, and `finalize` constructs the existing response. Conditional edges route
+between these nodes; the graph state is discarded after each request and has
+no checkpointer or persistent memory.
 
-The database session and Gemini client are passed as graph context, never
-included in the state sent to the model or in a Tool declaration. The existing
-four Tools remain registered through `app.tools.registry`, and their arguments
-are validated against the existing request schemas. Photo results omit local
-`image_path` values before returning to the model.
+LiteLLM maps the `restaurant-search-agent` model alias to the single
+`gemini/gemini-3.8-flash` route. Retries and response caching are disabled, and
+no fallback provider is configured yet. The existing Google GenAI Tool schemas
+and conversation history are translated to LiteLLM's chat-completion format;
+the Agent graph still owns tool execution and its call limits.
+
+The routing and tool-cycle tests use synthetic LiteLLM responses and do not
+contact Gemini:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_model_routing.py tests\test_restaurant_search_agent.py
+```
+
+The database session is passed as graph context, never included in the state
+sent to the model or in a Tool declaration. The existing four Tools remain
+registered through `app.tools.registry`, and their arguments are validated
+against the existing request schemas. Photo results omit local `image_path`
+values before returning to the model. Embeddings and RAG answer generation
+remain on the Google GenAI SDK; in particular, the RAG Interactions request
+still uses `store=False`.
 
 The Agent permits at most four Tool call attempts per request, including
 invalid or failed calls, and at most six model turns. When photos are requested,
-one Tool call is reserved for photo search. Automatic SDK function execution is
-disabled. Tool errors are returned to the model as explicit error results;
-Gemini/API failures produce an HTTP 502 response instead of a fabricated
-answer. When photo search returns matches, the API response includes a `photos`
-array alongside `answer`.
+one Tool call is reserved for photo search. Tool errors are returned to the
+model as explicit error results; model-route failures produce an HTTP 502
+response instead of a fabricated answer. When photo search returns matches,
+the API response includes a `photos` array alongside `answer`.
 The response also includes a `restaurants` array containing the structured
 candidates used by the Agent, with public source and attribution fields but no
 database UUID. Its `similarity` values are retrieval ranking signals, not

@@ -1,9 +1,11 @@
+import json
 from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
 import pytest
 from google.genai import types
+from litellm.types.utils import ModelResponse
 from pydantic import SecretStr
 
 from app.agents import restaurant_search_agent
@@ -16,26 +18,75 @@ from app.schemas import (
 from app.tools import registry
 
 
-class FakeModels:
+class FakeRouter:
     def __init__(self, responses: Sequence[types.GenerateContentResponse]) -> None:
         self.responses = list(responses)
         self.requests: list[dict[str, Any]] = []
 
-    def generate_content(self, **request: Any) -> types.GenerateContentResponse:
+    def completion(self, **request: Any) -> ModelResponse:
         self.requests.append(request)
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        candidate = response.candidates[0] if response.candidates else None
+        parts = candidate.content.parts if candidate and candidate.content else []
+        text_parts = [part.text for part in parts or [] if part.text is not None]
+        tool_calls = [
+            {
+                "id": part.function_call.id,
+                "type": "function",
+                "function": {
+                    "name": part.function_call.name,
+                    "arguments": json.dumps(part.function_call.args or {}),
+                },
+            }
+            for part in parts or []
+            if part.function_call is not None
+        ]
+        return ModelResponse(
+            choices=(
+                [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "\n".join(text_parts) if text_parts else None,
+                            "tool_calls": tool_calls or None,
+                        },
+                        "finish_reason": "tool_calls" if tool_calls else "stop",
+                    }
+                ]
+                if candidate
+                else []
+            )
+        )
 
 
-class FakeClient:
-    def __init__(self, responses: Sequence[types.GenerateContentResponse]) -> None:
-        self.models = FakeModels(responses)
-        self.closed = False
+def find_tool_result(
+    request: dict[str, Any],
+    tool_name: str,
+) -> dict[str, Any]:
+    tool_call_names = {
+        tool_call["id"]: tool_call["function"]["name"]
+        for message in request["messages"]
+        for tool_call in message.get("tool_calls", [])
+    }
+    for message in reversed(request["messages"]):
+        if (
+            message["role"] == "tool"
+            and tool_call_names.get(message["tool_call_id"]) == tool_name
+        ):
+            return json.loads(message["content"])
+    raise AssertionError(f"No result found for tool {tool_name}")
 
-    def __enter__(self) -> "FakeClient":
-        return self
 
-    def __exit__(self, *args: object) -> None:
-        self.closed = True
+def find_tool_call(
+    request: dict[str, Any],
+    tool_name: str,
+) -> dict[str, Any]:
+    for message in reversed(request["messages"]):
+        for tool_call in message.get("tool_calls", []):
+            if tool_call["function"]["name"] == tool_name:
+                return tool_call
+    raise AssertionError(f"No call found for tool {tool_name}")
 
 
 def function_call_response(
@@ -78,13 +129,18 @@ def text_response(text: str) -> types.GenerateContentResponse:
 def configure_client(
     monkeypatch: pytest.MonkeyPatch,
     *responses: types.GenerateContentResponse,
-) -> FakeClient:
-    client = FakeClient(responses)
+) -> FakeRouter:
+    client = FakeRouter(responses)
     monkeypatch.setattr(settings, "gemini_api_key", SecretStr("test-api-key"))
+
+    def fake_router(api_key: str) -> FakeRouter:
+        del api_key
+        return client
+
     monkeypatch.setattr(
-        restaurant_search_agent.genai,
-        "Client",
-        lambda **kwargs: client,
+        restaurant_search_agent,
+        "create_restaurant_search_router",
+        fake_router,
     )
     return client
 
@@ -384,12 +440,13 @@ def test_agent_returns_photo_results_as_safe_api_urls(
     assert response.photos[0].image_url == "/images/files/commons-photo.jpg"
     assert response.photos[0].restaurant_name == "Example Restaurant"
     assert response.photos[0].license_url == photo_result["license_url"]
-    assert "image_path" not in str(client.models.requests[-1]["contents"])
-    assert "MUST call" in client.models.requests[0]["config"].system_instruction
-    function_response = client.models.requests[-1]["contents"][-1].parts[0]
-    assert function_response.function_response.response["output"][0]["image_url"] == (
-        "/images/files/commons-photo.jpg"
+    assert "image_path" not in str(client.requests[-1]["messages"])
+    assert "MUST call" in client.requests[0]["messages"][0]["content"]
+    photo_result = find_tool_result(
+        client.requests[-1],
+        "search_restaurant_photos",
     )
+    assert photo_result["output"][0]["image_url"] == "/images/files/commons-photo.jpg"
 
 
 def test_agent_scopes_photos_by_candidate_id_and_exact_osm_url(
@@ -467,12 +524,9 @@ def test_agent_scopes_photos_by_candidate_id_and_exact_osm_url(
     assert len(response.photos) == 1
     assert response.photos[0].restaurant_source_url == second_candidate.source_url
     assert response.photos[0].restaurant_source_url != first_candidate.source_url
-    photo_result = next(
-        part.function_response.response
-        for content in client.models.requests[-1]["contents"]
-        for part in content.parts or []
-        if part.function_response is not None
-        and part.function_response.name == "search_restaurant_photos"
+    photo_result = find_tool_result(
+        client.requests[-1],
+        "search_restaurant_photos",
     )
     assert len(photo_result["output"]) == 1
     assert (
@@ -698,12 +752,9 @@ def test_agent_distinguishes_candidate_photo_search_error_from_empty_results(
 
     assert response.photos == []
     assert "No he podido completar la búsqueda de fotos." in response.answer
-    photo_result = next(
-        part.function_response.response
-        for content in client.models.requests[-1]["contents"]
-        for part in content.parts or []
-        if part.function_response is not None
-        and part.function_response.name == "search_restaurant_photos"
+    photo_result = find_tool_result(
+        client.requests[-1],
+        "search_restaurant_photos",
     )
     assert photo_result["error"]["code"] == "tool_execution_failed"
 
@@ -809,24 +860,27 @@ def test_agent_executes_tool_call_and_returns_model_final_answer(
             session,
         )
     ]
-    assert client.closed
-    first_request, final_request = client.models.requests
-    assert first_request["model"] == "gemini-3.8-flash"
-    assert first_request["config"].automatic_function_calling.disable is True
-    assert first_request["config"].tool_config.function_calling_config.mode == (
-        types.FunctionCallingConfigMode.AUTO
+    first_request, final_request = client.requests
+    assert first_request["model"] == "restaurant-search-agent"
+    assert first_request["tool_choice"] == "auto"
+    assert any(
+        tool["function"]["name"] == "search_restaurants"
+        for tool in first_request["tools"]
     )
-    assert final_request["contents"][-1].parts[0].function_response.response == {
+    assert json.loads(
+        find_tool_call(final_request, "search_restaurants")["function"]["arguments"]
+    ) == {"query": "vegetarian food", "top_k": 3}
+    assert find_tool_result(final_request, "search_restaurants") == {
         "output": {
             "results": [candidate.model_dump(mode="json")],
             "evidence_status": "not_required",
             "evidence_message": None,
         }
     }
-    assert final_request["contents"][-1].parts[0].function_response.id == "call-1"
+    assert final_request["messages"][-1]["tool_call_id"] == "call-1"
     assert all(
         repr(session) not in repr(request)
-        for request in client.models.requests
+        for request in client.requests
     )
 
 
@@ -861,15 +915,11 @@ def test_agent_caps_tool_calls_and_asks_for_final_answer_without_tools(
 
     assert response.answer == "No puedo realizar más búsquedas en esta petición."
     assert dispatch_count == restaurant_search_agent.MAX_TOOL_CALLS
-    final_request = client.models.requests[-1]
-    assert final_request["config"].tools is None
-    assert final_request["config"].tool_config.function_calling_config.mode == (
-        types.FunctionCallingConfigMode.NONE
-    )
-    rejected_result = client.models.requests[-1]["contents"][-1].parts[0]
-    assert rejected_result.function_response.response["error"]["code"] == (
-        "tool_call_limit_reached"
-    )
+    final_request = client.requests[-1]
+    assert "tools" not in final_request
+    assert "tool_choice" not in final_request
+    rejected_result = find_tool_result(final_request, "search_documents")
+    assert rejected_result["error"]["code"] == "tool_call_limit_reached"
 
 
 def test_agent_graph_stops_when_model_turn_limit_is_exhausted(
@@ -904,12 +954,13 @@ def test_agent_graph_stops_when_model_turn_limit_is_exhausted(
             object(),
         )
 
-    assert len(client.models.requests) == restaurant_search_agent.MAX_MODEL_TURNS
+    assert len(client.requests) == restaurant_search_agent.MAX_MODEL_TURNS
     assert dispatch_count == restaurant_search_agent.MAX_TOOL_CALLS
-    last_tool_result = client.models.requests[-1]["contents"][-1].parts[0]
-    assert last_tool_result.function_response.response["error"]["code"] == (
-        "tool_call_limit_reached"
+    last_tool_result = find_tool_result(
+        client.requests[-1],
+        "search_documents",
     )
+    assert last_tool_result["error"]["code"] == "tool_call_limit_reached"
 
 
 def test_agent_surfaces_tool_failure_to_model_without_fabricating_results(
@@ -937,10 +988,11 @@ def test_agent_surfaces_tool_failure_to_model_without_fabricating_results(
     )
 
     assert response.answer == "La búsqueda documental falló; no tengo resultados."
-    tool_result = client.models.requests[-1]["contents"][-1].parts[0]
-    assert tool_result.function_response.response["error"]["code"] == (
-        "tool_execution_failed"
+    tool_result = find_tool_result(
+        client.requests[-1],
+        "search_documents",
     )
+    assert tool_result["error"]["code"] == "tool_execution_failed"
 
 
 def test_agent_rejects_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -964,4 +1016,4 @@ def test_agent_rejects_empty_model_response(
     ):
         restaurant_search_agent.run_restaurant_search_agent("question", object())
 
-    assert client.closed
+    assert len(client.requests) == 1

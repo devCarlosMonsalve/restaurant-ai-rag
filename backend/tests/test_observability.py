@@ -252,25 +252,17 @@ def test_synthetic_rag_trace_is_hierarchical_and_excludes_content(
 def test_agent_graph_disables_automatic_langsmith_tracing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class FakeClient:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc_info):
-            del exc_info
-            return False
-
     expected = RestaurantSearchAgentResponse(answer="synthetic answer")
 
-    def fake_run_conversation(client, query, session):
+    def fake_run_conversation(router, query, session):
         assert query == "synthetic query"
-        del client, session
+        del router, session
         assert _tracing_v2_is_enabled() is False
         return expected
 
-    def fake_client(*, api_key):
+    def fake_router(api_key):
         assert api_key == "synthetic-key"
-        return FakeClient()
+        return object()
 
     monkeypatch.setattr(
         restaurant_search_agent.settings,
@@ -278,9 +270,9 @@ def test_agent_graph_disables_automatic_langsmith_tracing(
         SecretStr("synthetic-key"),
     )
     monkeypatch.setattr(
-        restaurant_search_agent.genai,
-        "Client",
-        fake_client,
+        restaurant_search_agent,
+        "create_restaurant_search_router",
+        fake_router,
     )
     monkeypatch.setattr(
         restaurant_search_agent,
