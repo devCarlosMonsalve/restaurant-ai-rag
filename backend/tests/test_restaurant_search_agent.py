@@ -132,9 +132,15 @@ def configure_client(
 ) -> FakeRouter:
     client = FakeRouter(responses)
     monkeypatch.setattr(settings, "gemini_api_key", SecretStr("test-api-key"))
+    monkeypatch.setattr(settings, "openai_api_key", None)
 
-    def fake_router(api_key: str) -> FakeRouter:
+    def fake_router(
+        api_key: str,
+        *,
+        openai_api_key: str | None = None,
+    ) -> FakeRouter:
         del api_key
+        assert openai_api_key is None
         return client
 
     monkeypatch.setattr(

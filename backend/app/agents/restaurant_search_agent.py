@@ -104,7 +104,15 @@ def run_restaurant_search_agent(
             "GEMINI_API_KEY must be set to run the restaurant search Agent"
         )
 
-    router = create_restaurant_search_router(api_key.get_secret_value())
+    openai_api_key = (
+        settings.openai_api_key.get_secret_value().strip()
+        if settings.openai_api_key is not None
+        else ""
+    )
+    router = create_restaurant_search_router(
+        api_key.get_secret_value(),
+        openai_api_key=openai_api_key or None,
+    )
     with traced_span(
         "agent.restaurant_search",
         {

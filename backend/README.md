@@ -211,19 +211,23 @@ it, and `finalize` constructs the existing response. Conditional edges route
 between these nodes; the graph state is discarded after each request and has
 no checkpointer or persistent memory.
 
-LiteLLM maps the `restaurant-search-agent` model alias to the single
-`gemini/gemini-3.8-flash` route. Retries and response caching are disabled, and
-each model request has a 60-second timeout. No fallback provider is configured
-yet. The existing Google GenAI Tool schemas and conversation history are
-translated to LiteLLM's chat-completion format; the Agent graph still owns tool
-execution and its call limits.
+LiteLLM maps the `restaurant-search-agent` model alias to
+`gemini/gemini-3.8-flash`. If `OPENAI_API_KEY` is configured, a failed Gemini
+request falls back once to `openai/gpt-4.1-mini`; without that key, only Gemini
+is configured. Retries and response caching are disabled, and each model
+request has a 60-second timeout. When fallback is used, the same prompt,
+conversation history, and tool results are sent to OpenAI. The existing Google
+GenAI Tool schemas and conversation history are translated to LiteLLM's
+chat-completion format; the Agent graph still owns tool execution and its call
+limits.
 
-When Phoenix tracing is enabled, model-call spans record the model, output-token
-limit, and provider-reported input, output, and total token counts. Prompts,
-conversation messages, and model responses are not added to these spans.
+When Phoenix tracing is enabled, model-call spans record the requested and
+responding model, output-token limit, and provider-reported input, output, and
+total token counts. Prompts, conversation messages, and model responses are not
+added to these spans.
 
 The routing and tool-cycle tests use synthetic LiteLLM responses and do not
-contact Gemini:
+contact Gemini or OpenAI:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\test_model_routing.py tests\test_restaurant_search_agent.py

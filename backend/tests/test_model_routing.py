@@ -12,6 +12,8 @@ from app.model_routing import (
     ModelRouteError,
     RESTAURANT_SEARCH_LITELLM_MODEL,
     RESTAURANT_SEARCH_MODEL_ALIAS,
+    RESTAURANT_SEARCH_OPENAI_FALLBACK_ALIAS,
+    RESTAURANT_SEARCH_OPENAI_FALLBACK_MODEL,
     RESTAURANT_SEARCH_REQUEST_TIMEOUT_SECONDS,
     RESTAURANT_SEARCH_MAX_OUTPUT_TOKENS,
     call_restaurant_search_model,
@@ -31,8 +33,38 @@ def test_restaurant_search_router_has_one_gemini_route() -> None:
         == RESTAURANT_SEARCH_REQUEST_TIMEOUT_SECONDS
     )
     assert router.num_retries == 0
+    assert router.max_fallbacks == 1
+    assert router.fallbacks is None
     assert router.cache_responses is False
     assert router.set_verbose is False
+
+
+def test_restaurant_search_router_configures_openai_fallback() -> None:
+    router = create_restaurant_search_router(
+        "synthetic-gemini-api-key",
+        openai_api_key="synthetic-openai-api-key",
+    )
+
+    assert [route["model_name"] for route in router.model_list] == [
+        RESTAURANT_SEARCH_MODEL_ALIAS,
+        RESTAURANT_SEARCH_OPENAI_FALLBACK_ALIAS,
+    ]
+    fallback_route = router.model_list[1]
+    assert (
+        fallback_route["litellm_params"]["model"]
+        == RESTAURANT_SEARCH_OPENAI_FALLBACK_MODEL
+    )
+    assert (
+        fallback_route["litellm_params"]["api_key"]
+        == "synthetic-openai-api-key"
+    )
+    assert router.fallbacks == [
+        {
+            RESTAURANT_SEARCH_MODEL_ALIAS: [
+                RESTAURANT_SEARCH_OPENAI_FALLBACK_ALIAS
+            ]
+        }
+    ]
 
 
 def test_model_route_failure_is_sanitized() -> None:
@@ -49,7 +81,10 @@ def test_model_route_failure_is_sanitized() -> None:
             del model, messages, _kwargs
             raise RuntimeError("private provider response")
 
-    with pytest.raises(ModelRouteError, match="Gemini could not complete") as error:
+    with pytest.raises(
+        ModelRouteError,
+        match="could not obtain a response from any configured model route",
+    ) as error:
         call_restaurant_search_model(
             FailedRouter(),
             [
@@ -63,6 +98,58 @@ def test_model_route_failure_is_sanitized() -> None:
         )
 
     assert "private provider response" not in str(error.value)
+
+
+def test_model_route_uses_openai_after_gemini_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    router = create_restaurant_search_router(
+        "synthetic-gemini-api-key",
+        openai_api_key="synthetic-openai-api-key",
+    )
+    attempted_routes: list[str] = []
+
+    def synthetic_completion(**kwargs: Any) -> ModelResponse:
+        route = kwargs["model"]
+        attempted_routes.append(route)
+        if route == RESTAURANT_SEARCH_MODEL_ALIAS:
+            raise RuntimeError("synthetic Gemini failure")
+        assert route == RESTAURANT_SEARCH_OPENAI_FALLBACK_ALIAS
+        return ModelResponse(
+            id="synthetic-id",
+            choices=[
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "synthetic answer"},
+                    "finish_reason": "stop",
+                }
+            ],
+            model=RESTAURANT_SEARCH_OPENAI_FALLBACK_MODEL,
+            usage={
+                "prompt_tokens": 11,
+                "completion_tokens": 4,
+                "total_tokens": 15,
+            },
+        )
+
+    monkeypatch.setattr(router, "_completion", synthetic_completion)
+    response = call_restaurant_search_model(
+        router,
+        [
+            types.Content(
+                role="user",
+                parts=[types.Part(text="synthetic query")],
+            )
+        ],
+        "synthetic system instruction",
+        tools_enabled=False,
+    )
+
+    assert attempted_routes == [
+        RESTAURANT_SEARCH_MODEL_ALIAS,
+        RESTAURANT_SEARCH_OPENAI_FALLBACK_ALIAS,
+    ]
+    assert response.candidates[0].content.parts[0].text == "synthetic answer"
 
 
 def test_model_usage_is_traced_without_conversation_content(
@@ -129,6 +216,7 @@ def test_model_usage_is_traced_without_conversation_content(
     assert attributes == {
         "gen_ai.request.model": RESTAURANT_SEARCH_LITELLM_MODEL,
         "gen_ai.request.max_tokens": RESTAURANT_SEARCH_MAX_OUTPUT_TOKENS,
+        "gen_ai.response.model": RESTAURANT_SEARCH_LITELLM_MODEL,
         "gen_ai.usage.input_tokens": 11,
         "gen_ai.usage.output_tokens": 4,
         "gen_ai.usage.total_tokens": 15,

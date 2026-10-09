@@ -260,14 +260,20 @@ def test_agent_graph_disables_automatic_langsmith_tracing(
         assert _tracing_v2_is_enabled() is False
         return expected
 
-    def fake_router(api_key):
+    def fake_router(api_key, *, openai_api_key=None):
         assert api_key == "synthetic-key"
+        assert openai_api_key == "synthetic-openai-key"
         return object()
 
     monkeypatch.setattr(
         restaurant_search_agent.settings,
         "gemini_api_key",
         SecretStr("synthetic-key"),
+    )
+    monkeypatch.setattr(
+        restaurant_search_agent.settings,
+        "openai_api_key",
+        SecretStr("synthetic-openai-key"),
     )
     monkeypatch.setattr(
         restaurant_search_agent,

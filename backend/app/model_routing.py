@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 RESTAURANT_SEARCH_MODEL_ALIAS = "restaurant-search-agent"
 RESTAURANT_SEARCH_LITELLM_MODEL = "gemini/gemini-3.8-flash"
+RESTAURANT_SEARCH_OPENAI_FALLBACK_ALIAS = "restaurant-search-openai-fallback"
+RESTAURANT_SEARCH_OPENAI_FALLBACK_MODEL = "openai/gpt-4.1-mini"
 RESTAURANT_SEARCH_REQUEST_TIMEOUT_SECONDS = 60
 RESTAURANT_SEARCH_MAX_OUTPUT_TOKENS = 1024
 
@@ -23,20 +25,46 @@ class ModelRouteError(RuntimeError):
     """The configured model route could not produce a usable response."""
 
 
-def create_restaurant_search_router(api_key: str) -> Router:
-    return Router(
-        model_list=[
+def create_restaurant_search_router(
+    api_key: str,
+    openai_api_key: str | None = None,
+) -> Router:
+    model_list: list[dict[str, Any]] = [
+        {
+            "model_name": RESTAURANT_SEARCH_MODEL_ALIAS,
+            "litellm_params": {
+                "model": RESTAURANT_SEARCH_LITELLM_MODEL,
+                "api_key": api_key,
+                "timeout": RESTAURANT_SEARCH_REQUEST_TIMEOUT_SECONDS,
+            },
+        }
+    ]
+    fallbacks: list[dict[str, list[str]]] = []
+    if openai_api_key is not None:
+        model_list.append(
             {
-                "model_name": RESTAURANT_SEARCH_MODEL_ALIAS,
+                "model_name": RESTAURANT_SEARCH_OPENAI_FALLBACK_ALIAS,
                 "litellm_params": {
-                    "model": RESTAURANT_SEARCH_LITELLM_MODEL,
-                    "api_key": api_key,
+                    "model": RESTAURANT_SEARCH_OPENAI_FALLBACK_MODEL,
+                    "api_key": openai_api_key,
                     "timeout": RESTAURANT_SEARCH_REQUEST_TIMEOUT_SECONDS,
                 },
             }
-        ],
+        )
+        fallbacks.append(
+            {
+                RESTAURANT_SEARCH_MODEL_ALIAS: [
+                    RESTAURANT_SEARCH_OPENAI_FALLBACK_ALIAS
+                ]
+            }
+        )
+
+    return Router(
+        model_list=model_list,
+        fallbacks=fallbacks,
         cache_responses=False,
         num_retries=0,
+        max_fallbacks=1,
         set_verbose=False,
     )
 
@@ -68,6 +96,9 @@ def call_restaurant_search_model(
             },
         ) as span:
             response = router.completion(**request)
+            response_model = getattr(response, "model", None)
+            if isinstance(response_model, str):
+                span.set_attribute("gen_ai.response.model", response_model)
             usage = getattr(response, "usage", None)
             if isinstance(response, ModelResponse) and usage is not None:
                 if usage.prompt_tokens is not None:
@@ -85,7 +116,7 @@ def call_restaurant_search_model(
             type(error).__name__,
         )
         raise ModelRouteError(
-            "Gemini could not complete the restaurant search Agent request."
+            "The restaurant search Agent could not obtain a response from any configured model route."
         ) from error
 
     if not isinstance(response, ModelResponse):
