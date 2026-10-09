@@ -14,6 +14,11 @@ from app.mcp_schemas import (
     McpRagAnswerResponse,
     McpRestaurantSearchResponse,
 )
+from app.observability import (
+    configure_phoenix_tracing,
+    shutdown_phoenix_tracing,
+    traced_span,
+)
 from app.tools.registry import TOOL_DEFINITIONS
 
 logger = logging.getLogger(__name__)
@@ -27,6 +32,16 @@ mcp = MCPServer("Restaurant AI RAG")
 
 
 def _invoke_tool(name: str, arguments: dict[str, Any]) -> Any:
+    with traced_span(
+        "mcp.tool.execute",
+        {"tool.name": name},
+    ) as span:
+        result = _invoke_tool_impl(name, arguments)
+        span.set_attribute("tool.status", "success")
+        return result
+
+
+def _invoke_tool_impl(name: str, arguments: dict[str, Any]) -> Any:
     definition = TOOL_DEFINITIONS[name]
     allowed_parameters = (
         set(definition.input_model.model_fields) - definition.hidden_parameters
@@ -164,10 +179,16 @@ def answer_from_documents(
 
 
 def main() -> None:
+    tracer_provider = None
     try:
+        tracer_provider = configure_phoenix_tracing()
         mcp.run(transport="stdio")
     finally:
-        engine.dispose()
+        try:
+            if tracer_provider is not None and not shutdown_phoenix_tracing():
+                logger.warning("Phoenix spans were not fully exported at MCP shutdown")
+        finally:
+            engine.dispose()
 
 
 if __name__ == "__main__":

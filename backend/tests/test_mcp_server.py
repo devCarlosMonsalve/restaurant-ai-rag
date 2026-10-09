@@ -1,11 +1,17 @@
 import asyncio
 from dataclasses import replace
+from unittest.mock import sentinel
 from uuid import uuid4
 
 import pytest
 from mcp import Client
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
-from app import mcp_server
+from app import mcp_server, observability
 from app.schemas import (
     DocumentSearchResult,
     ImageSearchResult,
@@ -232,3 +238,70 @@ def test_empty_results_are_success_and_tool_errors_are_sanitized(monkeypatch):
     assert "private-user" not in error_text
     assert "secret" not in error_text
     assert session.close_count == 2
+
+
+def test_mcp_tool_trace_excludes_arguments_and_results(monkeypatch):
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(observability, "_provider", provider)
+    session = FakeSession()
+    monkeypatch.setattr(mcp_server, "SessionLocal", lambda: session)
+
+    def empty_handler(**kwargs):
+        del kwargs
+        return []
+
+    replace_handler(monkeypatch, "search_documents", empty_handler)
+    private_query = "PRIVATE_MCP_QUERY_CANARY"
+
+    try:
+        response = call_tool("search_documents", {"query": private_query})
+        spans = exporter.get_finished_spans()
+    finally:
+        provider.shutdown()
+
+    assert not response.is_error
+    assert response.structured_content == {"results": []}
+    assert session.close_count == 1
+    assert len(spans) == 1
+    assert spans[0].name == "mcp.tool.execute"
+    assert spans[0].attributes == {
+        "tool.name": "search_documents",
+        "tool.status": "success",
+    }
+    assert private_query not in repr(
+        (spans[0].name, dict(spans[0].attributes or {}))
+    )
+
+
+def test_mcp_main_configures_and_shuts_down_tracing(monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        mcp_server,
+        "configure_phoenix_tracing",
+        lambda: sentinel.provider,
+    )
+    monkeypatch.setattr(
+        mcp_server.mcp,
+        "run",
+        lambda **kwargs: events.append(("run", kwargs)),
+    )
+    monkeypatch.setattr(
+        mcp_server,
+        "shutdown_phoenix_tracing",
+        lambda: events.append("shutdown") or True,
+    )
+    monkeypatch.setattr(
+        mcp_server.engine,
+        "dispose",
+        lambda: events.append("dispose"),
+    )
+
+    mcp_server.main()
+
+    assert events == [
+        ("run", {"transport": "stdio"}),
+        "shutdown",
+        "dispose",
+    ]

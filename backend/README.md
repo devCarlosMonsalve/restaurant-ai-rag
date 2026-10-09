@@ -420,8 +420,10 @@ local image paths are deliberately excluded. Automatic SDK instrumentation is
 not enabled, and the RAG LCEL, Agent, and photo-workflow graph calls explicitly
 disable automatic LangSmith tracing even if it is enabled elsewhere in the
 process. The LangSmith context helper is used only to suppress that tracing;
-it does not export runs. FastAPI flushes and shuts down the exporter during
-lifespan shutdown. To disable tracing, set `PHOENIX_TRACING_ENABLED=false`; Phoenix can
+it does not export runs. FastAPI and the standalone MCP process flush and shut
+down the exporter when they stop. The MCP process uses the same `PHOENIX_*`
+settings from its environment or the backend's local `.env`. To disable
+tracing, set `PHOENIX_TRACING_ENABLED=false`; Phoenix can
 be stopped independently with:
 
 ```powershell
