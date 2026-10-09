@@ -17,17 +17,14 @@ from app.schemas import (
 )
 
 
-def test_search_restaurants_use_case_delegates_to_frozen_service(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_search_restaurants_use_case_delegates_to_repository() -> None:
     expected = sentinel.response
     calls = {}
 
-    def fake_search(query, session, **kwargs):
-        calls.update(query=query, session=session, **kwargs)
-        return expected
-
-    monkeypatch.setattr(restaurant_discovery, "search_osm_places_by_text", fake_search)
+    class FakeRepository:
+        def search_restaurants(self, query, **kwargs):
+            calls.update(query=query, **kwargs)
+            return expected
 
     response = restaurant_discovery.search_restaurants(
         OsmRestaurantSearchRequest(
@@ -36,13 +33,12 @@ def test_search_restaurants_use_case_delegates_to_frozen_service(
             city="Madrid",
             cuisine="spanish",
         ),
-        sentinel.session,
+        FakeRepository(),
     )
 
     assert response is expected
     assert calls == {
         "query": "terrace",
-        "session": sentinel.session,
         "top_k": 4,
         "city": "Madrid",
         "cuisine": "spanish",
@@ -50,17 +46,14 @@ def test_search_restaurants_use_case_delegates_to_frozen_service(
     }
 
 
-def test_search_restaurants_use_case_can_include_indexed_photo_places(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_search_restaurants_use_case_can_include_indexed_photo_places() -> None:
     expected = sentinel.response
     calls = {}
 
-    def fake_search(query, session, **kwargs):
-        calls.update(query=query, session=session, **kwargs)
-        return expected
-
-    monkeypatch.setattr(restaurant_discovery, "search_osm_places_by_text", fake_search)
+    class FakeRepository:
+        def search_restaurants(self, query, **kwargs):
+            calls.update(query=query, **kwargs)
+            return expected
 
     response = restaurant_discovery.search_restaurants(
         OsmRestaurantSearchRequest(
@@ -69,14 +62,13 @@ def test_search_restaurants_use_case_can_include_indexed_photo_places(
             city="Madrid",
             cuisine="mexican",
         ),
-        sentinel.session,
+        FakeRepository(),
         include_places_with_photos=True,
     )
 
     assert response is expected
     assert calls == {
         "query": "mexican restaurants",
-        "session": sentinel.session,
         "top_k": 5,
         "city": "Madrid",
         "cuisine": "mexican",
@@ -84,17 +76,14 @@ def test_search_restaurants_use_case_can_include_indexed_photo_places(
     }
 
 
-def test_search_restaurant_photos_use_case_delegates_to_frozen_service(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_search_restaurant_photos_use_case_delegates_to_repository() -> None:
     expected = [sentinel.photo]
     calls = {}
 
-    def fake_search(query, session, **kwargs):
-        calls.update(query=query, session=session, **kwargs)
-        return expected
-
-    monkeypatch.setattr(restaurant_discovery, "search_images_by_text", fake_search)
+    class FakeRepository:
+        def search_photos(self, query, **kwargs):
+            calls.update(query=query, **kwargs)
+            return expected
 
     response = restaurant_discovery.search_restaurant_photos(
         ImageSearchRequest(
@@ -104,32 +93,29 @@ def test_search_restaurant_photos_use_case_delegates_to_frozen_service(
             city="Madrid",
             cuisine="spanish",
         ),
-        sentinel.session,
+        FakeRepository(),
     )
 
     assert response is expected
     assert calls == {
         "query": "terrace",
-        "session": sentinel.session,
         "top_k": 4,
         "osm_places_only": True,
         "city": "Madrid",
         "cuisine": "spanish",
+        "osm_place_id": None,
     }
 
 
-def test_search_restaurant_photos_passes_optional_osm_place_filter(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_search_restaurant_photos_passes_optional_osm_place_filter() -> None:
     expected = [sentinel.photo]
     calls = {}
     place_id = uuid4()
 
-    def fake_search(query, session, **kwargs):
-        calls.update(query=query, session=session, **kwargs)
-        return expected
-
-    monkeypatch.setattr(restaurant_discovery, "search_images_by_text", fake_search)
+    class FakeRepository:
+        def search_photos(self, query, **kwargs):
+            calls.update(query=query, **kwargs)
+            return expected
 
     response = restaurant_discovery.search_restaurant_photos(
         ImageSearchRequest(
@@ -137,14 +123,13 @@ def test_search_restaurant_photos_passes_optional_osm_place_filter(
             top_k=3,
             osm_places_only=True,
         ),
-        sentinel.session,
+        FakeRepository(),
         osm_place_id=place_id,
     )
 
     assert response is expected
     assert calls == {
         "query": "restaurant exterior",
-        "session": sentinel.session,
         "top_k": 3,
         "osm_places_only": True,
         "city": None,
@@ -153,48 +138,41 @@ def test_search_restaurant_photos_passes_optional_osm_place_filter(
     }
 
 
-def test_search_documents_use_case_delegates_to_frozen_service(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_search_documents_use_case_delegates_to_repository() -> None:
     expected = [sentinel.document]
     calls = {}
 
-    def fake_search(query, session, *, top_k):
-        calls.update(query=query, session=session, top_k=top_k)
-        return expected
-
-    monkeypatch.setattr(knowledge, "search_document_chunks", fake_search)
+    class FakeRepository:
+        def search_documents(self, query, *, top_k):
+            calls.update(query=query, top_k=top_k)
+            return expected
 
     response = knowledge.search_documents(
         DocumentSearchRequest(query="menu", top_k=3),
-        sentinel.session,
+        FakeRepository(),
     )
 
     assert response is expected
     assert calls == {
         "query": "menu",
-        "session": sentinel.session,
         "top_k": 3,
     }
 
 
-def test_answer_from_documents_use_case_delegates_to_frozen_service(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_answer_from_documents_use_case_delegates_to_repository() -> None:
     expected = sentinel.answer
     calls = {}
 
-    def fake_answer(request, session):
-        calls.update(request=request, session=session)
-        return expected
-
-    monkeypatch.setattr(knowledge, "answer_with_rag", fake_answer)
+    class FakeRepository:
+        def answer_from_documents(self, request):
+            calls["request"] = request
+            return expected
 
     request = RagQuestionRequest(query="question", top_k=3)
-    response = knowledge.answer_from_documents(request, sentinel.session)
+    response = knowledge.answer_from_documents(request, FakeRepository())
 
     assert response is expected
-    assert calls == {"request": request, "session": sentinel.session}
+    assert calls == {"request": request}
 
 
 def test_answer_from_documents_with_photos_keeps_evidence_separate(
@@ -226,9 +204,9 @@ def test_answer_from_documents_with_photos_keeps_evidence_separate(
     )
     calls = {}
 
-    def fake_document_answer(received_request, session):
+    def fake_document_answer(received_request, repository):
         assert received_request is request
-        assert session is sentinel.session
+        assert repository is sentinel.knowledge_repository
         return document_answer
 
     monkeypatch.setattr(
@@ -237,9 +215,9 @@ def test_answer_from_documents_with_photos_keeps_evidence_separate(
         fake_document_answer,
     )
 
-    def fake_search_restaurant_photos(image_request, session):
+    def fake_search_restaurant_photos(image_request, repository):
         calls["request"] = image_request
-        calls["session"] = session
+        calls["repository"] = repository
         return [photo]
 
     monkeypatch.setattr(
@@ -250,7 +228,8 @@ def test_answer_from_documents_with_photos_keeps_evidence_separate(
 
     response = knowledge.answer_from_documents_with_photos(
         request,
-        sentinel.session,
+        sentinel.knowledge_repository,
+        sentinel.restaurant_repository,
     )
 
     assert response.answer == document_answer.answer
@@ -271,7 +250,7 @@ def test_answer_from_documents_with_photos_keeps_evidence_separate(
             top_k=3,
             osm_places_only=True,
         ),
-        "session": sentinel.session,
+        "repository": sentinel.restaurant_repository,
     }
 
 
@@ -281,9 +260,9 @@ def test_answer_from_documents_with_photos_skips_search_by_default(
     document_answer = RagAnswerResponse(answer="Text answer.", sources=[])
     request = RagQuestionWithPhotosRequest(query="tomato pasta", top_k=3)
 
-    def fake_document_answer(received_request, session):
+    def fake_document_answer(received_request, repository):
         assert received_request is request
-        assert session is sentinel.session
+        assert repository is sentinel.knowledge_repository
         return document_answer
 
     monkeypatch.setattr(
@@ -292,13 +271,13 @@ def test_answer_from_documents_with_photos_skips_search_by_default(
         fake_document_answer,
     )
 
-    def unexpected_photo_search(image_request, session):
+    def unexpected_photo_search(image_request, repository):
         assert image_request == ImageSearchRequest(
             query=request.query,
             top_k=request.top_k,
             osm_places_only=True,
         )
-        assert session is sentinel.session
+        assert repository is sentinel.restaurant_repository
         pytest.fail("Photo search must be opt-in")
 
     monkeypatch.setattr(
@@ -307,7 +286,11 @@ def test_answer_from_documents_with_photos_skips_search_by_default(
         unexpected_photo_search,
     )
 
-    response = knowledge.answer_from_documents_with_photos(request, sentinel.session)
+    response = knowledge.answer_from_documents_with_photos(
+        request,
+        sentinel.knowledge_repository,
+        sentinel.restaurant_repository,
+    )
 
     assert response.answer == "Text answer."
     assert response.sources == []
@@ -324,9 +307,9 @@ def test_answer_from_documents_with_photos_surfaces_search_errors(
         include_photos=True,
     )
 
-    def return_document_answer(received_request, session):
+    def return_document_answer(received_request, repository):
         assert received_request is request
-        assert session is sentinel.session
+        assert repository is sentinel.knowledge_repository
         return document_answer
 
     monkeypatch.setattr(
@@ -335,13 +318,13 @@ def test_answer_from_documents_with_photos_surfaces_search_errors(
         return_document_answer,
     )
 
-    def fail_photo_search(image_request, session):
+    def fail_photo_search(image_request, repository):
         assert image_request == ImageSearchRequest(
             query="tomato pasta",
             top_k=3,
             osm_places_only=True,
         )
-        assert session is sentinel.session
+        assert repository is sentinel.restaurant_repository
         raise RuntimeError("Image retrieval failed")
 
     monkeypatch.setattr(
@@ -351,4 +334,8 @@ def test_answer_from_documents_with_photos_surfaces_search_errors(
     )
 
     with pytest.raises(RuntimeError, match="Image retrieval failed"):
-        knowledge.answer_from_documents_with_photos(request, sentinel.session)
+        knowledge.answer_from_documents_with_photos(
+            request,
+            sentinel.knowledge_repository,
+            sentinel.restaurant_repository,
+        )

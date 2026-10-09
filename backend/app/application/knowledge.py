@@ -1,10 +1,7 @@
-from sqlalchemy.orm import Session
-
+from app.application.ports import KnowledgePort, RestaurantDiscoveryPort
 from app.application.restaurant_discovery import search_restaurant_photos
-from app.document_search import search_document_chunks
 from app.image_presentation import image_file_url
 from app.observability import traced_span
-from app.rag import answer_with_rag
 from app.schemas import (
     DocumentSearchRequest,
     DocumentSearchResult,
@@ -19,25 +16,25 @@ from app.schemas import (
 
 def search_documents(
     request: DocumentSearchRequest,
-    session: Session,
+    repository: KnowledgePort,
 ) -> list[DocumentSearchResult]:
-    return search_document_chunks(
+    return repository.search_documents(
         request.query,
-        session,
         top_k=request.top_k,
     )
 
 
 def answer_from_documents(
     request: RagQuestionRequest,
-    session: Session,
+    repository: KnowledgePort,
 ) -> RagAnswerResponse:
-    return answer_with_rag(request, session)
+    return repository.answer_from_documents(request)
 
 
 def answer_from_documents_with_photos(
     request: RagQuestionWithPhotosRequest,
-    session: Session,
+    knowledge_repository: KnowledgePort,
+    restaurant_repository: RestaurantDiscoveryPort,
 ) -> RagAnswerWithPhotosResponse:
     with traced_span(
         "application.answer_with_document_photos",
@@ -46,7 +43,7 @@ def answer_from_documents_with_photos(
             "photos.enabled": request.include_photos,
         },
     ) as span:
-        answer = answer_from_documents(request, session)
+        answer = answer_from_documents(request, knowledge_repository)
         photos = []
         if request.include_photos:
             image_results = search_restaurant_photos(
@@ -55,7 +52,7 @@ def answer_from_documents_with_photos(
                     top_k=request.top_k,
                     osm_places_only=True,
                 ),
-                session,
+                restaurant_repository,
             )
             photos = [
                 RagPhoto(

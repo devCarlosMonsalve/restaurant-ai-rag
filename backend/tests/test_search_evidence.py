@@ -1,11 +1,11 @@
 from datetime import date
 from uuid import uuid4
 
-from app.restaurant_search import search_osm_places_by_text
-from app.search_evidence import (
+from app.domain.restaurant_discovery.evidence import (
     detect_search_evidence,
     matches_feature_requirements,
 )
+from app.restaurant_search import search_osm_places_by_text
 
 
 def test_search_evidence_detects_specific_features_and_unverified_details() -> None:

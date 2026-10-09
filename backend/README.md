@@ -160,8 +160,9 @@ but are marked as unverified.
 The application layer groups use cases by bounded context. The
 `app.application.restaurant_discovery` module coordinates restaurant and photo
 search; `app.application.knowledge` coordinates document search and grounded
-answers. Each use case accepts an existing request schema and database session,
-then delegates to the frozen service without changing its algorithm or result.
+answers. These use cases receive application ports from
+`app.application.ports`; the PostgreSQL adapters own the SQLAlchemy session and
+delegate to the existing retrieval algorithms.
 
 The `app.tools` package exposes these use cases through thin Tool boundaries.
 Their docstrings are the human- and LLM-facing descriptions. The explicit
@@ -191,14 +192,40 @@ details can remain unverified. Kosher evidence is subject to the documented
 freshness policy but its certifier is not independently validated.
 
 FastAPI routes in `app.main` and the Tool adapters are separate entry points
-that call the same application use cases. The existing domain policies,
-SQLAlchemy models, database access, embedding providers, and external-data
-clients remain in their current modules; this incremental structure does not
-add empty domain/infrastructure packages, repositories, or interfaces.
+that call the same application use cases. The backend is being migrated toward
+dependency-inverted DDD boundaries incrementally, without changing the HTTP,
+MCP, A2A, or CLI contracts:
 
-This is a modular-monolith boundary, not a full dependency-inverted DDD
-reorganization. It leaves the current session-based frozen services in place
-until there is a concrete need to separate their persistence dependencies.
+- `app.domain` holds framework-independent policies and domain types.
+- `app.application` coordinates use cases through ports rather than depending
+  directly on SQLAlchemy sessions.
+- `app.infrastructure` contains persistence- and provider-specific adapters.
+- `app.main`, Tools, Agents, workflows, MCP, A2A, and CLI scripts remain
+  delivery/integration boundaries.
+
+The first migrated domain policies cover restaurant-search evidence,
+candidate-photo association, and document text preparation. Intent detection,
+feature matching, and kosher freshness live in
+`app.domain.restaurant_discovery.evidence`; exact-source photo association
+lives in `app.domain.restaurant_discovery.photo_association`; and Unicode
+normalization and text chunking live in `app.domain.knowledge.text`.
+PostgreSQL JSONB query generation is isolated in
+`app.infrastructure.persistence.postgres.evidence_queries`, while file reading
+for text ingestion lives in `app.infrastructure.filesystem.text_documents`.
+The remaining migration is sequenced as follows:
+
+1. Complete and verify the application ports and PostgreSQL adapters for
+   restaurant discovery and knowledge/RAG.
+2. Separate image, document, and OSM ingestion rules from filesystem,
+   database, embedding-provider, and external-data clients.
+3. Move remaining Agent/workflow orchestration behind application use cases
+   and retire legacy service paths.
+4. Keep Tools, MCP, A2A, HTTP, and CLI as delivery adapters, preserving their
+   existing request and response contracts.
+
+Those persistence-heavy search, RAG, ingestion, and Agent flows remain on the
+legacy path until their phase is migrated. Do not treat ORM rows or API schemas
+as domain entities.
 
 ## Restaurant search Agent
 

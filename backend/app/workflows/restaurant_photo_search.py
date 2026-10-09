@@ -10,6 +10,9 @@ from app.application.restaurant_discovery import (
     search_verified_candidate_photos,
 )
 from app.image_presentation import image_file_url
+from app.infrastructure.persistence.postgres.restaurant_discovery import (
+    PostgresRestaurantDiscoveryAdapter,
+)
 from app.observability import (
     disable_automatic_langchain_tracing,
     traced_span,
@@ -66,7 +69,7 @@ def search_candidates(
                     city=state["city"],
                     cuisine=state["cuisine"],
                 ),
-                runtime.context["session"],
+                PostgresRestaurantDiscoveryAdapter(runtime.context["session"]),
                 include_places_with_photos=True,
             )
         )
@@ -103,7 +106,7 @@ def search_photos_for_candidates(
         photos, photo_warnings = search_verified_candidate_photos(
             candidates,
             state["query"],
-            runtime.context["session"],
+            PostgresRestaurantDiscoveryAdapter(runtime.context["session"]),
             city=state["city"],
             cuisine=state["cuisine"],
             candidate_limit=state["candidate_limit"],

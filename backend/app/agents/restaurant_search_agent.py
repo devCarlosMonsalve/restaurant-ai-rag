@@ -19,6 +19,9 @@ from app.agents.schemas import (
     RestaurantSearchAgentResponse,
 )
 from app.core.config import settings
+from app.infrastructure.persistence.postgres.restaurant_discovery import (
+    PostgresRestaurantDiscoveryAdapter,
+)
 from app.observability import (
     disable_automatic_langchain_tracing,
     traced_span,
@@ -268,7 +271,7 @@ def _search_candidate_photo_tool(
         photos, _ = search_verified_candidate_photos(
             candidates,
             request.query,
-            session,
+            PostgresRestaurantDiscoveryAdapter(session),
             city=request.city,
             cuisine=request.cuisine,
             candidate_limit=request.top_k,

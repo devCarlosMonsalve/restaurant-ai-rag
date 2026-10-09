@@ -25,6 +25,12 @@ from app.application.restaurant_discovery import (
     search_restaurants as search_restaurants_use_case,
 )
 from app.database import get_db
+from app.infrastructure.persistence.postgres.knowledge import (
+    PostgresKnowledgeAdapter,
+)
+from app.infrastructure.persistence.postgres.restaurant_discovery import (
+    PostgresRestaurantDiscoveryAdapter,
+)
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.models.restaurant import Restaurant
@@ -146,7 +152,10 @@ def search_osm_restaurants(
     request: OsmRestaurantSearchRequest,
     db: Session = Depends(get_db),
 ) -> OsmRestaurantSearchResponse:
-    return search_restaurants_use_case(request, db)
+    return search_restaurants_use_case(
+        request,
+        PostgresRestaurantDiscoveryAdapter(db),
+    )
 
 
 @app.post(
@@ -158,7 +167,7 @@ def search_documents(
     request: DocumentSearchRequest,
     db: Session = Depends(get_db),
 ) -> list[DocumentSearchResult]:
-    return search_documents_use_case(request, db)
+    return search_documents_use_case(request, PostgresKnowledgeAdapter(db))
 
 
 @app.post(
@@ -170,7 +179,11 @@ def ask_documents(
     request: RagQuestionWithPhotosRequest,
     db: Session = Depends(get_db),
 ) -> RagAnswerWithPhotosResponse:
-    return answer_documents_use_case(request, db)
+    return answer_documents_use_case(
+        request,
+        PostgresKnowledgeAdapter(db),
+        PostgresRestaurantDiscoveryAdapter(db),
+    )
 
 
 @app.post(
@@ -218,7 +231,10 @@ def search_images(
     request: ImageSearchRequest,
     db: Session = Depends(get_db),
 ) -> list[ImageSearchResult]:
-    return search_restaurant_photos_use_case(request, db)
+    return search_restaurant_photos_use_case(
+        request,
+        PostgresRestaurantDiscoveryAdapter(db),
+    )
 
 
 @app.get("/", include_in_schema=False)

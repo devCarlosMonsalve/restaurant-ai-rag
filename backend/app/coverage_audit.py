@@ -2,8 +2,8 @@ from collections import Counter
 from datetime import date
 from typing import Any, Iterable
 
+from app.domain.restaurant_discovery.evidence import KOSHER_MAX_AGE_DAYS
 from app.open_data_sources import OSM_FEATURE_TAGS
-from app.search_evidence import KOSHER_MAX_AGE_DAYS
 
 
 def build_coverage_report(

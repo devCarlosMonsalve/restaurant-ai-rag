@@ -1,6 +1,7 @@
 import pytest
 
-from app.text_processing import chunk_text, clean_text, ingest_txt
+from app.domain.knowledge.text import chunk_text, clean_text
+from app.infrastructure.filesystem.text_documents import ingest_txt
 
 
 def test_clean_text_normalizes_unicode_and_whitespace() -> None:

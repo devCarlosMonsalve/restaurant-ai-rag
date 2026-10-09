@@ -1,6 +1,9 @@
 from sqlalchemy.orm import Session
 
 from app.application.knowledge import search_documents as search_documents_use_case
+from app.infrastructure.persistence.postgres.knowledge import (
+    PostgresKnowledgeAdapter,
+)
 from app.schemas import DocumentSearchRequest, DocumentSearchResult
 
 
@@ -33,4 +36,4 @@ def search_documents(
         similarity.
     """
     request = DocumentSearchRequest(query=query, top_k=top_k)
-    return search_documents_use_case(request, session)
+    return search_documents_use_case(request, PostgresKnowledgeAdapter(session))

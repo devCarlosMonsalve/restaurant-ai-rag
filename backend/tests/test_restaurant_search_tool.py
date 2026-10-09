@@ -17,10 +17,10 @@ def test_search_restaurants_delegates_to_frozen_search_service(
     )
     calls = {}
 
-    def fake_search(request, session):
+    def fake_search(request, repository):
         calls.update(
             query=request.query,
-            session=session,
+            session=repository.session,
             top_k=request.top_k,
             city=request.city,
             cuisine=request.cuisine,

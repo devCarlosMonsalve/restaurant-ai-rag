@@ -1,12 +1,11 @@
 import logging
-from typing import Any
 from uuid import UUID
 
-from sqlalchemy.orm import Session
-
-from app.image_search import search_images_by_text
+from app.application.ports import RestaurantDiscoveryPort
+from app.domain.restaurant_discovery.photo_association import (
+    is_verified_photo_association,
+)
 from app.observability import traced_span
-from app.restaurant_search import search_osm_places_by_text
 from app.schemas import (
     ImageSearchRequest,
     ImageSearchResult,
@@ -24,7 +23,7 @@ class CandidatePhotoSearchError(RuntimeError):
 
 def search_restaurants(
     request: OsmRestaurantSearchRequest,
-    session: Session,
+    repository: RestaurantDiscoveryPort,
     *,
     include_places_with_photos: bool = False,
 ) -> OsmRestaurantSearchResponse:
@@ -35,32 +34,21 @@ def search_restaurants(
             "retrieval.include_places_with_photos": include_places_with_photos,
         },
     ) as span:
-        result = search_osm_places_by_text(
+        return repository.search_restaurants(
             request.query,
-            session,
             top_k=request.top_k,
             city=request.city,
             cuisine=request.cuisine,
             include_places_with_photos=include_places_with_photos,
         )
-        return result
 
 
 def search_restaurant_photos(
     request: ImageSearchRequest,
-    session: Session,
+    repository: RestaurantDiscoveryPort,
     *,
     osm_place_id: UUID | None = None,
 ) -> list[ImageSearchResult]:
-    search_options: dict[str, Any] = {
-        "top_k": request.top_k,
-        "osm_places_only": request.osm_places_only,
-        "city": request.city,
-        "cuisine": request.cuisine,
-    }
-    if osm_place_id is not None:
-        search_options["osm_place_id"] = osm_place_id
-
     with traced_span(
         "retrieval.restaurant_photos",
         {
@@ -69,10 +57,13 @@ def search_restaurant_photos(
             "retrieval.candidate_scoped": osm_place_id is not None,
         },
     ) as span:
-        results = search_images_by_text(
+        results = repository.search_photos(
             request.query,
-            session,
-            **search_options,
+            top_k=request.top_k,
+            osm_places_only=request.osm_places_only,
+            city=request.city,
+            cuisine=request.cuisine,
+            osm_place_id=osm_place_id,
         )
         span.set_attribute("retrieval.result_count", len(results))
         return results
@@ -81,7 +72,7 @@ def search_restaurant_photos(
 def search_verified_candidate_photos(
     candidates: list[OsmRestaurantSearchResult],
     query: str,
-    session: Session,
+    repository: RestaurantDiscoveryPort,
     *,
     city: str | None = None,
     cuisine: str | None = None,
@@ -113,7 +104,7 @@ def search_verified_candidate_photos(
                     cuisine=cuisine,
                     osm_places_only=True,
                 ),
-                session,
+                repository,
                 osm_place_id=candidate.id,
             )
             if not isinstance(photo_results, list):
@@ -149,7 +140,10 @@ def search_verified_candidate_photos(
                 if warning not in warnings:
                     warnings.append(warning)
                 continue
-            if photo.restaurant_source_url != candidate.source_url:
+            if not is_verified_photo_association(
+                candidate.source_url,
+                photo.restaurant_source_url,
+            ):
                 warning = (
                     "A photo result was excluded because its "
                     "restaurant_source_url did not match the candidate."

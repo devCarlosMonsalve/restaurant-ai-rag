@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from app.application.restaurant_discovery import (
     search_restaurants as search_restaurants_use_case,
 )
+from app.infrastructure.persistence.postgres.restaurant_discovery import (
+    PostgresRestaurantDiscoveryAdapter,
+)
 from app.schemas import (
     OsmRestaurantSearchRequest,
     OsmRestaurantSearchResponse,
@@ -53,4 +56,7 @@ def search_restaurants(
         city=city,
         cuisine=cuisine,
     )
-    return search_restaurants_use_case(request, session)
+    return search_restaurants_use_case(
+        request,
+        PostgresRestaurantDiscoveryAdapter(session),
+    )

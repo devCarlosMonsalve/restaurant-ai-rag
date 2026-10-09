@@ -4,6 +4,9 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.application.restaurant_discovery import search_verified_candidate_photos
+from app.infrastructure.persistence.postgres.restaurant_discovery import (
+    PostgresRestaurantDiscoveryAdapter,
+)
 from app.image_search import search_images_by_text
 from app.image_embeddings import IMAGE_EMBEDDING_DIMENSIONS
 from app.models.image_embedding import ImageEmbedding
@@ -71,7 +74,7 @@ def test_postgres_image_search_scopes_results_and_checks_exact_osm_url(
     verified_photos, warnings = search_verified_candidate_photos(
         [candidate],
         "zzzz",
-        postgres_session,
+        PostgresRestaurantDiscoveryAdapter(postgres_session),
         city="Madrid",
         cuisine="mexican",
         candidate_limit=1,
@@ -88,7 +91,7 @@ def test_postgres_image_search_scopes_results_and_checks_exact_osm_url(
     rejected_photos, mismatch_warnings = search_verified_candidate_photos(
         [inconsistent_candidate],
         "zzzz",
-        postgres_session,
+        PostgresRestaurantDiscoveryAdapter(postgres_session),
         city="Madrid",
         cuisine="mexican",
         candidate_limit=1,

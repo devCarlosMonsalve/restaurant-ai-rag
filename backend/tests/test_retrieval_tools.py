@@ -22,10 +22,10 @@ def test_search_restaurant_photos_delegates_to_existing_image_search(
     expected = [sentinel.image_result]
     calls = {}
 
-    def fake_search(request, session):
+    def fake_search(request, repository):
         calls.update(
             query=request.query,
-            session=session,
+            session=repository.session,
             top_k=request.top_k,
             city=request.city,
             cuisine=request.cuisine,
@@ -75,10 +75,10 @@ def test_search_documents_delegates_to_existing_document_retrieval(
     ]
     calls = {}
 
-    def fake_search(request, session):
+    def fake_search(request, repository):
         calls.update(
             query=request.query,
-            session=session,
+            session=repository.session,
             top_k=request.top_k,
         )
         return expected
@@ -104,11 +104,11 @@ def test_answer_from_documents_delegates_to_existing_rag_service(
     expected = RagAnswerResponse(answer="Answer [menu.txt#0]", sources=[])
     calls = {}
 
-    def fake_answer(request, session):
+    def fake_answer(request, repository):
         calls.update(
             query=request.query,
             top_k=request.top_k,
-            session=session,
+            session=repository.session,
         )
         return expected
 

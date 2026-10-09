@@ -5,15 +5,17 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.domain.restaurant_discovery.evidence import (
+    detect_search_evidence,
+    matches_feature_requirements,
+)
 from app.image_embeddings import embed_text_for_image_search
+from app.infrastructure.persistence.postgres.evidence_queries import (
+    feature_requirements_clause,
+)
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.place_filters import cuisine_filter
-from app.search_evidence import (
-    detect_search_evidence,
-    feature_requirements_clause,
-    matches_feature_requirements,
-)
 from app.schemas import ImageSearchResult
 
 _STOPWORDS = {

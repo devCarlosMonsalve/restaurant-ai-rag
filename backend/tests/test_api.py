@@ -261,7 +261,7 @@ def test_ask_documents_returns_answer_and_sources(
     )
     calls = {}
 
-    def fake_answer(request, session):
+    def fake_answer(request, knowledge_repository, restaurant_repository):
         calls["query"] = request.query
         calls["top_k"] = request.top_k
         calls["include_photos"] = request.include_photos

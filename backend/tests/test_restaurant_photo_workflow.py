@@ -70,7 +70,7 @@ def install_tool_stub(monkeypatch, candidates, photo_results=None, error=None):
 
     def fake_candidate_search(
         request,
-        session: Session,
+        repository,
         *,
         include_places_with_photos: bool,
     ) -> OsmRestaurantSearchResponse:
@@ -84,7 +84,7 @@ def install_tool_stub(monkeypatch, candidates, photo_results=None, error=None):
                     "cuisine": request.cuisine,
                     "include_places_with_photos": include_places_with_photos,
                 },
-                session,
+                repository.session,
             )
         )
         if error and error[0] == "search_restaurants":
@@ -102,10 +102,10 @@ def install_tool_stub(monkeypatch, candidates, photo_results=None, error=None):
         fake_candidate_search,
     )
 
-    def fake_photo_search(request, session: Session, *, osm_place_id):
+    def fake_photo_search(request, repository, *, osm_place_id):
         arguments = request.model_dump()
         arguments["osm_place_id"] = osm_place_id
-        calls.append(("search_restaurant_photos", arguments, session))
+        calls.append(("search_restaurant_photos", arguments, repository.session))
         if error and error[0] == "search_restaurant_photos":
             raise RuntimeError("photo search failed")
         return photo_results or []

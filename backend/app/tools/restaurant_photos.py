@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from app.application.restaurant_discovery import (
     search_restaurant_photos as search_restaurant_photos_use_case,
 )
+from app.infrastructure.persistence.postgres.restaurant_discovery import (
+    PostgresRestaurantDiscoveryAdapter,
+)
 from app.schemas import ImageSearchRequest, ImageSearchResult
 
 
@@ -50,4 +53,7 @@ def search_restaurant_photos(
         cuisine=cuisine,
         osm_places_only=True,
     )
-    return search_restaurant_photos_use_case(request, session)
+    return search_restaurant_photos_use_case(
+        request,
+        PostgresRestaurantDiscoveryAdapter(session),
+    )

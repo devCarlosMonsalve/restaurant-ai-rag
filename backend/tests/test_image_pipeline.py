@@ -168,7 +168,7 @@ def test_image_search_endpoint_returns_matches(
     ]
     calls = {}
 
-    def fake_search(request, session: Session):
+    def fake_search(request, repository):
         calls["query"] = request.query
         calls["top_k"] = request.top_k
         calls["osm_places_only"] = request.osm_places_only

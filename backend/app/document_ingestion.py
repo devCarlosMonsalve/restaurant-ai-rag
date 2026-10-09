@@ -5,8 +5,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.embeddings import embed_document_chunks
+from app.infrastructure.filesystem.text_documents import ingest_txt
 from app.models.document_chunk import DocumentChunk
-from app.text_processing import ingest_txt
 
 
 def ingest_txt_to_database(
