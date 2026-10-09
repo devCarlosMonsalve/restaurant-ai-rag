@@ -1,11 +1,13 @@
 import logging
 import re
 import unicodedata
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
+from langgraph.graph import END, START, StateGraph
+from langgraph.runtime import Runtime
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -59,6 +61,31 @@ class RestaurantSearchAgentError(RuntimeError):
     """The Agent could not produce a valid final response."""
 
 
+class _AgentContext(TypedDict):
+    client: genai.Client
+    session: Session
+
+
+class _AgentState(TypedDict):
+    query: str
+    contents: list[types.Content]
+    tool_call_count: int
+    model_turn_count: int
+    photos: list[RestaurantSearchAgentPhoto]
+    restaurant_search_attempted: bool
+    restaurant_search_succeeded: bool
+    restaurant_search_failed: bool
+    restaurant_candidates: dict[str, OsmRestaurantSearchResult]
+    seen_photo_sources: set[str]
+    photo_search_requested: bool
+    photo_search_attempted: bool
+    photo_search_failed: bool
+    capability_notice: str | None
+    pending_function_calls: list[types.FunctionCall]
+    pending_answer: str | None
+    final_response: RestaurantSearchAgentResponse | None
+
+
 def run_restaurant_search_agent(
     query: str,
     session: Session,
@@ -87,212 +114,40 @@ def _run_conversation(
     query: str,
     session: Session,
 ) -> RestaurantSearchAgentResponse:
-    contents = [
-        types.Content(
-            role="user",
-            parts=[types.Part(text=query)],
-        )
-    ]
-    tool_call_count = 0
-    photos: list[RestaurantSearchAgentPhoto] = []
-    restaurant_search_attempted = False
-    restaurant_search_succeeded = False
-    restaurant_search_failed = False
-    restaurant_candidates: dict[str, OsmRestaurantSearchResult] = {}
-    seen_photo_sources: set[str] = set()
-    photo_search_requested = _asks_for_photos(query)
-    photo_search_attempted = False
-    photo_search_succeeded = False
-    photo_search_failed = False
-    capability_notice = _unsupported_live_data_notice(query)
-
-    for _ in range(MAX_MODEL_TURNS):
-        reserved_photo_calls = (
-            1 if photo_search_requested and not photo_search_attempted else 0
-        )
-        model_tool_call_limit = MAX_TOOL_CALLS - reserved_photo_calls
-        tools_enabled = tool_call_count < model_tool_call_limit
-        system_instruction = SYSTEM_INSTRUCTION
-        if capability_notice:
-            system_instruction += (
-                "\nThe host will prepend this capability limitation to your "
-                f"final answer: {capability_notice} Do not repeat it."
-            )
-        config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.2,
-            max_output_tokens=1024,
-            tools=[_TOOL_BUNDLE] if tools_enabled else None,
-            tool_config=types.ToolConfig(
-                function_calling_config=types.FunctionCallingConfig(
-                    mode=(
-                        types.FunctionCallingConfigMode.AUTO
-                        if tools_enabled
-                        else types.FunctionCallingConfigMode.NONE
-                    )
-                )
-            ),
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                disable=True
-            ),
-        )
-        response = client.models.generate_content(
-            model=RESTAURANT_SEARCH_AGENT_MODEL,
-            contents=contents,
-            config=config,
-        )
-        candidate = response.candidates[0] if response.candidates else None
-        model_content = candidate.content if candidate is not None else None
-        if model_content is None:
-            raise RestaurantSearchAgentError(
-                "Gemini returned no candidate for the Agent request"
-            )
-
-        function_calls = [
-            part.function_call
-            for part in model_content.parts or []
-            if part.function_call is not None
-        ]
-        if not function_calls:
-            answer = response.text
-            if answer is None or not answer.strip():
-                raise RestaurantSearchAgentError(
-                    "Gemini returned an empty Agent answer"
-                )
-            if photo_search_requested and not photo_search_attempted:
-                photo_search_attempted = True
-                tool_call_count += 1
-                if restaurant_search_attempted:
-                    photo_tool_result = _search_candidate_photo_tool(
-                        {"query": query},
-                        candidates=list(restaurant_candidates.values()),
-                        session=session,
-                        candidate_search_failed=(
-                            restaurant_search_failed
-                            and not restaurant_search_succeeded
-                        ),
-                    )
-                else:
-                    photo_tool_result = dispatch_tool_call(
-                        "search_restaurant_photos",
-                        {"query": query},
-                        session,
-                    )
-                photo_search_succeeded = _collect_photo_results(
-                    photo_tool_result,
-                    photos,
-                    seen_photo_sources,
-                )
-                photo_search_failed = not photo_search_succeeded
-            final_answer = answer.strip()
-            if capability_notice and not _normalize_text(final_answer).startswith(
-                _normalize_text(capability_notice)
-            ):
-                final_answer = f"{capability_notice}\n\n{final_answer}"
-            if photo_search_requested and not photos:
-                photo_notice = _photo_search_notice(
-                    query,
-                    failed=photo_search_failed,
-                    candidates_searched=restaurant_search_attempted,
-                )
-                if photo_notice not in final_answer:
-                    final_answer = f"{final_answer}\n\n{photo_notice}"
-            return RestaurantSearchAgentResponse(
-                answer=final_answer,
-                photos=photos,
-            )
-
-        contents.append(model_content)
-        tool_results: dict[int, dict[str, Any]] = {}
-        execution_order = sorted(
-            enumerate(function_calls),
-            key=lambda indexed_call: (
-                indexed_call[1].name != "search_restaurants"
-            ),
-        )
-        for index, function_call in execution_order:
-            name = function_call.name or ""
-            reserved_photo_call = (
-                photo_search_requested
-                and not photo_search_attempted
-                and name != "search_restaurant_photos"
-            )
-            call_limit = MAX_TOOL_CALLS - (1 if reserved_photo_call else 0)
-            if tool_call_count >= call_limit:
-                tool_result = {
-                    "error": {
-                        "code": "tool_call_limit_reached",
-                        "message": (
-                            "The maximum number of tool calls for this request "
-                            "has been reached."
-                        ),
-                    }
-                }
-            else:
-                tool_call_count += 1
-                if name == "search_restaurant_photos":
-                    photo_search_attempted = True
-                if name == "search_restaurant_photos" and restaurant_search_attempted:
-                    tool_result = _search_candidate_photo_tool(
-                        function_call.args,
-                        candidates=list(restaurant_candidates.values()),
-                        session=session,
-                        candidate_search_failed=(
-                            restaurant_search_failed
-                            and not restaurant_search_succeeded
-                        ),
-                    )
-                else:
-                    tool_result = dispatch_tool_call(
-                        function_call.name,
-                        function_call.args,
-                        session,
-                    )
-                if name == "search_restaurants":
-                    restaurant_search_attempted = True
-                    if photo_search_attempted:
-                        photos.clear()
-                        seen_photo_sources.clear()
-                        photo_search_attempted = False
-                        photo_search_succeeded = False
-                        photo_search_failed = False
-                    if "error" in tool_result:
-                        restaurant_search_failed = True
-                    else:
-                        restaurant_search_succeeded = True
-                        restaurant_candidates.update(
-                            _restaurant_candidates(tool_result)
-                        )
-                elif name == "search_restaurant_photos":
-                    photo_search_succeeded = _collect_photo_results(
-                        tool_result,
-                        photos,
-                        seen_photo_sources,
-                    )
-                    photo_search_failed = not photo_search_succeeded
-            tool_results[index] = tool_result
-
-        for index, function_call in enumerate(function_calls):
-            name = function_call.name or ""
-            tool_result = tool_results[index]
-            contents.append(
+    result = _AGENT_GRAPH.invoke(
+        {
+            "query": query,
+            "contents": [
                 types.Content(
                     role="user",
-                    parts=[
-                        types.Part(
-                            function_response=types.FunctionResponse(
-                                id=function_call.id,
-                                name=name,
-                                response=tool_result,
-                            )
-                        )
-                    ],
+                    parts=[types.Part(text=query)],
                 )
-            )
-
-    raise RestaurantSearchAgentError(
-        "The Agent did not return a final answer within the allowed model turns"
+            ],
+            "tool_call_count": 0,
+            "model_turn_count": 0,
+            "photos": [],
+            "restaurant_search_attempted": False,
+            "restaurant_search_succeeded": False,
+            "restaurant_search_failed": False,
+            "restaurant_candidates": {},
+            "seen_photo_sources": set(),
+            "photo_search_requested": _asks_for_photos(query),
+            "photo_search_attempted": False,
+            "photo_search_failed": False,
+            "capability_notice": _unsupported_live_data_notice(query),
+            "pending_function_calls": [],
+            "pending_answer": None,
+            "final_response": None,
+        },
+        context={"client": client, "session": session},
+        config={"recursion_limit": MAX_MODEL_TURNS * 2 + 3},
     )
+    final_response = result["final_response"]
+    if final_response is None:
+        raise RestaurantSearchAgentError(
+            "The Agent graph did not produce a final response"
+        )
+    return final_response
 
 
 def _collect_photo_results(
@@ -538,3 +393,297 @@ def _is_spanish_query(query: str) -> bool:
             "restaurante",
         )
     )
+
+
+def _call_model_node(
+    state: _AgentState,
+    runtime: Runtime[_AgentContext],
+) -> dict[str, Any]:
+    reserved_photo_calls = (
+        1
+        if state["photo_search_requested"] and not state["photo_search_attempted"]
+        else 0
+    )
+    model_tool_call_limit = MAX_TOOL_CALLS - reserved_photo_calls
+    tools_enabled = state["tool_call_count"] < model_tool_call_limit
+    system_instruction = SYSTEM_INSTRUCTION
+    capability_notice = state["capability_notice"]
+    if capability_notice:
+        system_instruction += (
+            "\nThe host will prepend this capability limitation to your "
+            f"final answer: {capability_notice} Do not repeat it."
+        )
+    config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        temperature=0.2,
+        max_output_tokens=1024,
+        tools=[_TOOL_BUNDLE] if tools_enabled else None,
+        tool_config=types.ToolConfig(
+            function_calling_config=types.FunctionCallingConfig(
+                mode=(
+                    types.FunctionCallingConfigMode.AUTO
+                    if tools_enabled
+                    else types.FunctionCallingConfigMode.NONE
+                )
+            )
+        ),
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+            disable=True
+        ),
+    )
+    response = runtime.context["client"].models.generate_content(
+        model=RESTAURANT_SEARCH_AGENT_MODEL,
+        contents=state["contents"],
+        config=config,
+    )
+    candidate = response.candidates[0] if response.candidates else None
+    model_content = candidate.content if candidate is not None else None
+    if model_content is None:
+        raise RestaurantSearchAgentError(
+            "Gemini returned no candidate for the Agent request"
+        )
+
+    function_calls = [
+        part.function_call
+        for part in model_content.parts or []
+        if part.function_call is not None
+    ]
+    if not function_calls:
+        answer = response.text
+        if answer is None or not answer.strip():
+            raise RestaurantSearchAgentError("Gemini returned an empty Agent answer")
+        return {
+            "model_turn_count": state["model_turn_count"] + 1,
+            "pending_function_calls": [],
+            "pending_answer": answer,
+        }
+
+    return {
+        "contents": [*state["contents"], model_content],
+        "model_turn_count": state["model_turn_count"] + 1,
+        "pending_function_calls": function_calls,
+        "pending_answer": None,
+    }
+
+
+def _route_after_model(
+    state: _AgentState,
+) -> Literal["execute_tools", "force_photo_search", "finalize"]:
+    if state["pending_function_calls"]:
+        return "execute_tools"
+    if state["photo_search_requested"] and not state["photo_search_attempted"]:
+        return "force_photo_search"
+    return "finalize"
+
+
+def _execute_tools_node(
+    state: _AgentState,
+    runtime: Runtime[_AgentContext],
+) -> dict[str, Any]:
+    function_calls = state["pending_function_calls"]
+    tool_results: dict[int, dict[str, Any]] = {}
+    execution_order = sorted(
+        enumerate(function_calls),
+        key=lambda indexed_call: indexed_call[1].name != "search_restaurants",
+    )
+    tool_call_count = state["tool_call_count"]
+    photos = list(state["photos"])
+    restaurant_search_attempted = state["restaurant_search_attempted"]
+    restaurant_search_succeeded = state["restaurant_search_succeeded"]
+    restaurant_search_failed = state["restaurant_search_failed"]
+    restaurant_candidates = dict(state["restaurant_candidates"])
+    seen_photo_sources = set(state["seen_photo_sources"])
+    photo_search_attempted = state["photo_search_attempted"]
+    photo_search_failed = state["photo_search_failed"]
+    photo_search_requested = state["photo_search_requested"]
+    session = runtime.context["session"]
+
+    for index, function_call in execution_order:
+        name = function_call.name or ""
+        reserved_photo_call = (
+            photo_search_requested
+            and not photo_search_attempted
+            and name != "search_restaurant_photos"
+        )
+        call_limit = MAX_TOOL_CALLS - (1 if reserved_photo_call else 0)
+        if tool_call_count >= call_limit:
+            tool_result = {
+                "error": {
+                    "code": "tool_call_limit_reached",
+                    "message": (
+                        "The maximum number of tool calls for this request "
+                        "has been reached."
+                    ),
+                }
+            }
+        else:
+            tool_call_count += 1
+            if name == "search_restaurant_photos":
+                photo_search_attempted = True
+            if name == "search_restaurant_photos" and restaurant_search_attempted:
+                tool_result = _search_candidate_photo_tool(
+                    function_call.args,
+                    candidates=list(restaurant_candidates.values()),
+                    session=session,
+                    candidate_search_failed=(
+                        restaurant_search_failed and not restaurant_search_succeeded
+                    ),
+                )
+            else:
+                tool_result = dispatch_tool_call(
+                    function_call.name,
+                    function_call.args,
+                    session,
+                )
+            if name == "search_restaurants":
+                restaurant_search_attempted = True
+                if photo_search_attempted:
+                    photos.clear()
+                    seen_photo_sources.clear()
+                    photo_search_attempted = False
+                    photo_search_failed = False
+                if "error" in tool_result:
+                    restaurant_search_failed = True
+                else:
+                    restaurant_search_succeeded = True
+                    restaurant_candidates.update(_restaurant_candidates(tool_result))
+            elif name == "search_restaurant_photos":
+                photo_search_failed = not _collect_photo_results(
+                    tool_result,
+                    photos,
+                    seen_photo_sources,
+                )
+        tool_results[index] = tool_result
+
+    contents = list(state["contents"])
+    for index, function_call in enumerate(function_calls):
+        name = function_call.name or ""
+        contents.append(
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part(
+                        function_response=types.FunctionResponse(
+                            id=function_call.id,
+                            name=name,
+                            response=tool_results[index],
+                        )
+                    )
+                ],
+            )
+        )
+
+    return {
+        "contents": contents,
+        "tool_call_count": tool_call_count,
+        "photos": photos,
+        "restaurant_search_attempted": restaurant_search_attempted,
+        "restaurant_search_succeeded": restaurant_search_succeeded,
+        "restaurant_search_failed": restaurant_search_failed,
+        "restaurant_candidates": restaurant_candidates,
+        "seen_photo_sources": seen_photo_sources,
+        "photo_search_attempted": photo_search_attempted,
+        "photo_search_failed": photo_search_failed,
+        "pending_function_calls": [],
+    }
+
+
+def _route_after_tools(state: _AgentState) -> Literal["call_model"]:
+    if state["model_turn_count"] >= MAX_MODEL_TURNS:
+        raise RestaurantSearchAgentError(
+            "The Agent did not return a final answer within the allowed model turns"
+        )
+    return "call_model"
+
+
+def _force_photo_search_node(
+    state: _AgentState,
+    runtime: Runtime[_AgentContext],
+) -> dict[str, Any]:
+    photos = list(state["photos"])
+    seen_photo_sources = set(state["seen_photo_sources"])
+    if state["restaurant_search_attempted"]:
+        photo_tool_result = _search_candidate_photo_tool(
+            {"query": state["query"]},
+            candidates=list(state["restaurant_candidates"].values()),
+            session=runtime.context["session"],
+            candidate_search_failed=(
+                state["restaurant_search_failed"]
+                and not state["restaurant_search_succeeded"]
+            ),
+        )
+    else:
+        photo_tool_result = dispatch_tool_call(
+            "search_restaurant_photos",
+            {"query": state["query"]},
+            runtime.context["session"],
+        )
+    photo_search_failed = not _collect_photo_results(
+        photo_tool_result,
+        photos,
+        seen_photo_sources,
+    )
+    return {
+        "tool_call_count": state["tool_call_count"] + 1,
+        "photos": photos,
+        "seen_photo_sources": seen_photo_sources,
+        "photo_search_attempted": True,
+        "photo_search_failed": photo_search_failed,
+    }
+
+
+def _finalize_node(state: _AgentState) -> dict[str, Any]:
+    answer = state["pending_answer"]
+    if answer is None:
+        raise RestaurantSearchAgentError(
+            "The Agent graph reached finalization without an answer"
+        )
+    final_answer = answer.strip()
+    capability_notice = state["capability_notice"]
+    if capability_notice and not _normalize_text(final_answer).startswith(
+        _normalize_text(capability_notice)
+    ):
+        final_answer = f"{capability_notice}\n\n{final_answer}"
+    if state["photo_search_requested"] and not state["photos"]:
+        photo_notice = _photo_search_notice(
+            state["query"],
+            failed=state["photo_search_failed"],
+            candidates_searched=state["restaurant_search_attempted"],
+        )
+        if photo_notice not in final_answer:
+            final_answer = f"{final_answer}\n\n{photo_notice}"
+    return {
+        "final_response": RestaurantSearchAgentResponse(
+            answer=final_answer,
+            photos=state["photos"],
+        )
+    }
+
+
+def _build_agent_graph():
+    graph = StateGraph(_AgentState, context_schema=_AgentContext)
+    graph.add_node("call_model", _call_model_node)
+    graph.add_node("execute_tools", _execute_tools_node)
+    graph.add_node("force_photo_search", _force_photo_search_node)
+    graph.add_node("finalize", _finalize_node)
+    graph.add_edge(START, "call_model")
+    graph.add_conditional_edges(
+        "call_model",
+        _route_after_model,
+        {
+            "execute_tools": "execute_tools",
+            "force_photo_search": "force_photo_search",
+            "finalize": "finalize",
+        },
+    )
+    graph.add_conditional_edges(
+        "execute_tools",
+        _route_after_tools,
+        {"call_model": "call_model"},
+    )
+    graph.add_edge("force_photo_search", "finalize")
+    graph.add_edge("finalize", END)
+    return graph.compile()
+
+
+_AGENT_GRAPH = _build_agent_graph()

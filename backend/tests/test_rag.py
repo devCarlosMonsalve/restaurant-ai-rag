@@ -56,10 +56,13 @@ def test_generate_grounded_answer_sends_question_and_source(
     request = client.interactions.request
     assert answer == "Pasta is made daily [menu.txt#0]."
     assert request["model"] == answer_generation.GEMINI_GENERATION_MODEL
-    assert "How often is the pasta made?" in request["input"]
-    assert "[menu.txt#0]" in request["input"]
-    assert "Use only the supplied document excerpts" in request["system_instruction"]
+    assert request["input"] == (
+        "Question:\nHow often is the pasta made?\n\nRetrieved excerpts:\n"
+        "[menu.txt#0]\nFresh pasta is made daily."
+    )
+    assert request["system_instruction"] == answer_generation.SYSTEM_INSTRUCTION
     assert request["generation_config"]["temperature"] == 0.2
+    assert request["generation_config"]["max_output_tokens"] == 512
     assert request["store"] is False
     assert client.closed
 
@@ -72,6 +75,15 @@ def test_generate_grounded_answer_rejects_empty_model_response(
     monkeypatch.setattr(answer_generation.genai, "Client", lambda **kwargs: client)
 
     with pytest.raises(RuntimeError, match="empty answer"):
+        answer_generation.generate_grounded_answer("question", [make_chunk()])
+
+
+def test_generate_grounded_answer_requires_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "gemini_api_key", None)
+
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
         answer_generation.generate_grounded_answer("question", [make_chunk()])
 
 

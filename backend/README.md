@@ -203,32 +203,44 @@ until there is a concrete need to separate their persistence dependencies.
 ## Restaurant search Agent
 
 `POST /agents/restaurant-search` runs the first Agent using the existing
-`gemini-3.8-flash` model and the `google-genai` SDK. It manually registers the
-four Tools through `app.tools.registry`, validates every function-call
-argument against the existing request schemas, and executes calls sequentially.
-The database session is injected by the API host and is never included in a
-function declaration or sent as a model argument. Photo results omit local
+`gemini-3.8-flash` model and the `google-genai` SDK. A request-scoped LangGraph
+`StateGraph` makes the orchestration explicit without changing the model client
+or Tool registry. Its `call_model` node handles Gemini turns, `execute_tools`
+validates and runs Tool calls, `force_photo_search` enforces an explicit photo
+request if the model omitted it, and `finalize` constructs the existing
+response. Conditional edges route between these nodes; the graph state is
+discarded after each request and has no checkpointer or persistent memory.
+
+The database session and Gemini client are passed as graph context, never
+included in the state sent to the model or in a Tool declaration. The existing
+four Tools remain registered through `app.tools.registry`, and their arguments
+are validated against the existing request schemas. Photo results omit local
 `image_path` values before returning to the model.
 
 The Agent permits at most four Tool call attempts per request, including
-invalid or failed calls. Automatic SDK function execution is disabled. Tool
-errors are returned to the model as explicit error results; Gemini/API failures
-produce an HTTP 502 response instead of a fabricated answer. When photo search
-returns matches, the API response includes a `photos` array alongside `answer`.
+invalid or failed calls, and at most six model turns. When photos are requested,
+one Tool call is reserved for photo search. Automatic SDK function execution is
+disabled. Tool errors are returned to the model as explicit error results;
+Gemini/API failures produce an HTTP 502 response instead of a fabricated
+answer. When photo search returns matches, the API response includes a `photos`
+array alongside `answer`.
 Each photo has a safe API-relative `image_url` (for example,
 `/images/files/commons-photo.jpg`) and available source, license, attribution,
 and restaurant metadata. The local `image_path` is never sent to the model or
 returned by the Agent endpoint. Clients can render each `image_url` using the
 API base URL; Postman displays the URL as JSON rather than rendering the image.
-When restaurant and photo search are both used, photos are restricted to names
-present in the restaurant candidates and repeated Commons sources are removed.
-For explicit photo requests, the host reserves a Tool call and performs the
-photo search if the model omits it. If no photos remain after matching them to
-the candidates, the answer says that no associated indexed photos were found.
+When restaurant and photo search are both used, photos are searched by
+candidate OSM ID and included only when the photo's `restaurant_source_url`
+exactly matches the candidate's `source_url`; repeated Commons sources are
+removed. Restaurant calls are executed before other Tools in a model turn, but
+their results are returned to Gemini in the original call order. If no photos
+remain associated with the candidates, the answer says so.
 
-The Agent does not add a new retrieval or ranking path, personalized
-preferences, workflows, or persistent conversation state. It does not
-introduce LangGraph or MCP.
+LangGraph's concrete benefit here is an explicit, testable state machine for
+model/tool cycles, forced photo lookup, finalization, and turn-limit handling
+instead of one opaque manual loop. It does not add a new retrieval or ranking
+path, personalized preferences, or persistent conversation state. The separate
+photo workflow and MCP server are not invoked or changed by this Agent graph.
 
 There are no Tools for live reservation availability or current menu prices.
 For requests that explicitly ask for those facts, the Agent response begins
@@ -315,6 +327,51 @@ benchmark cases, run:
 This prints the top results with their OSM cuisine and feature attributes plus
 their evidence status for manual acceptance review; it does not calculate
 ranking metrics for this set.
+
+## LangChain in RAG answer generation
+
+Document retrieval remains the existing SQLAlchemy/pgvector query. The
+generation step composes a `ChatPromptTemplate`, a `RunnableLambda` adapter for
+the existing Gemini SDK call, and `StrOutputParser` as an LCEL chain:
+
+```text
+question + retrieved excerpts
+  -> ChatPromptTemplate
+  -> RunnableLambda (_generate_with_gemini)
+  -> google-genai interactions.create
+  -> AIMessage
+  -> StrOutputParser
+  -> answer string
+```
+
+The adapter intentionally keeps `google-genai` and the current
+`interactions.create(..., store=False)` request. This preserves the existing
+provider request and its explicit storage setting instead of assuming that a
+different chat-model adapter has identical privacy behavior. The prompt text,
+Gemini model, temperature, token limit, no-document path, and public RAG
+response schema remain unchanged. The chain currently parses plain text; it
+does not independently validate citations or change the retrieved sources.
+
+`langchain-core` is a direct dependency because the application imports its
+prompt, runnable, message, and parser APIs. The normal tests use a fake Gemini
+client and make no provider calls:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_rag.py
+```
+
+The existing `GEMINI_API_KEY` setting still configures the provider through
+the backend environment or its local `.env`; no LangSmith account or tracing
+service is required. The API continues to expose this generation through
+`POST /documents/ask`. The official `ChatGoogleGenerativeAI` adapter was not
+used because equivalence with the current explicit `store=False` request was
+not established. This synchronous chain does not add streaming, retries,
+structured output, or citation validation.
+
+This integration adds LCEL composition to generation only. It does not add a
+LangChain vector-store retriever, change retrieval behavior, or run the
+real-provider RAG benchmark. A provider-adapter migration can be considered
+later if its privacy and request semantics are verified.
 
 ## Retrieval baseline — FROZEN
 
