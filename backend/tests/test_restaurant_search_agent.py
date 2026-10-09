@@ -863,6 +863,46 @@ def test_agent_caps_tool_calls_and_asks_for_final_answer_without_tools(
     )
 
 
+def test_agent_graph_stops_when_model_turn_limit_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = configure_client(
+        monkeypatch,
+        *[
+            function_call_response("search_documents", {"query": "menus"})
+            for _ in range(restaurant_search_agent.MAX_MODEL_TURNS)
+        ],
+    )
+    dispatch_count = 0
+
+    def fake_dispatch(name: str | None, args: Any, session: Any):
+        nonlocal dispatch_count
+        dispatch_count += 1
+        return {"output": []}
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        fake_dispatch,
+    )
+
+    with pytest.raises(
+        restaurant_search_agent.RestaurantSearchAgentError,
+        match="within the allowed model turns",
+    ):
+        restaurant_search_agent.run_restaurant_search_agent(
+            "Busca documentos",
+            object(),
+        )
+
+    assert len(client.models.requests) == restaurant_search_agent.MAX_MODEL_TURNS
+    assert dispatch_count == restaurant_search_agent.MAX_TOOL_CALLS
+    last_tool_result = client.models.requests[-1]["contents"][-1].parts[0]
+    assert last_tool_result.function_response.response["error"]["code"] == (
+        "tool_call_limit_reached"
+    )
+
+
 def test_agent_surfaces_tool_failure_to_model_without_fabricating_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
