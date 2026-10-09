@@ -1,11 +1,15 @@
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.schemas import OsmRestaurantSearchResult
+from app.schemas import (
+    ImageSearchResult,
+    OsmRestaurantSearchResponse,
+    OsmRestaurantSearchResult,
+)
 from app.workflows.restaurant_photo_search import (
     RestaurantPhotoWorkflowError,
     run_restaurant_photo_workflow,
@@ -40,52 +44,75 @@ def make_photo(
     restaurant_source_url: str | None,
     *,
     source_url: str | None = None,
-    image_url: str = "/images/files/photo.jpg",
-) -> dict[str, Any]:
-    return {
-        "id": str(uuid4()),
-        "source_name": "photo.jpg",
-        "similarity": 0.91,
-        "metadata_match_count": 1,
-        "source_url": source_url,
-        "license_name": "CC BY-SA 4.0",
-        "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
-        "attribution": "Photographer",
-        "restaurant_name": "Casa Verde",
-        "restaurant_location": "Calle Mayor 1",
-        "restaurant_cuisine": "vegetarian",
-        "restaurant_features": [],
-        "restaurant_source_url": restaurant_source_url,
-        "restaurant_attribution": "© OpenStreetMap contributors",
-        "restaurant_attribution_url": "https://www.openstreetmap.org/copyright",
-        "image_url": image_url,
-    }
+) -> ImageSearchResult:
+    return ImageSearchResult(
+        id=uuid4(),
+        source_name="photo.jpg",
+        image_path="C:/images/photo.jpg",
+        similarity=0.91,
+        metadata_match_count=1,
+        source_url=source_url,
+        license_name="CC BY-SA 4.0",
+        license_url="https://creativecommons.org/licenses/by-sa/4.0/",
+        attribution="Photographer",
+        restaurant_name="Casa Verde",
+        restaurant_location="Calle Mayor 1",
+        restaurant_cuisine="vegetarian",
+        restaurant_features=[],
+        restaurant_source_url=restaurant_source_url,
+        restaurant_attribution="© OpenStreetMap contributors",
+        restaurant_attribution_url="https://www.openstreetmap.org/copyright",
+    )
 
 
 def install_tool_stub(monkeypatch, candidates, photo_results=None, error=None):
     calls: list[tuple[str, dict[str, Any], Session]] = []
 
-    def fake_dispatch(
-        name: str,
-        arguments: dict[str, Any],
+    def fake_candidate_search(
+        request,
         session: Session,
-    ) -> dict[str, Any]:
-        calls.append((name, arguments, session))
-        if error and error[0] == name:
-            return {"error": {"code": "tool_execution_failed", "message": "failed"}}
-        if name == "search_restaurants":
-            return {
-                "output": {
-                    "results": candidates,
-                    "evidence_status": "verified",
-                    "evidence_message": None,
-                }
+        *,
+        include_places_with_photos: bool,
+    ) -> OsmRestaurantSearchResponse:
+        calls.append(
+            (
+                "search_restaurants",
+                {
+                    "query": request.query,
+                    "top_k": request.top_k,
+                    "city": request.city,
+                    "cuisine": request.cuisine,
+                    "include_places_with_photos": include_places_with_photos,
+                },
+                session,
+            )
+        )
+        if error and error[0] == "search_restaurants":
+            raise RuntimeError("restaurant search failed")
+        return OsmRestaurantSearchResponse.model_validate(
+            {
+                "results": candidates,
+                "evidence_status": "verified",
+                "evidence_message": None,
             }
-        return {"output": photo_results or []}
+        )
 
     monkeypatch.setattr(
-        "app.workflows.restaurant_photo_search.dispatch_tool_call",
-        fake_dispatch,
+        "app.workflows.restaurant_photo_search.search_restaurants_use_case",
+        fake_candidate_search,
+    )
+
+    def fake_photo_search(request, session: Session, *, osm_place_id):
+        arguments = request.model_dump()
+        arguments["osm_place_id"] = osm_place_id
+        calls.append(("search_restaurant_photos", arguments, session))
+        if error and error[0] == "search_restaurant_photos":
+            raise RuntimeError("photo search failed")
+        return photo_results or []
+
+    monkeypatch.setattr(
+        "app.workflows.restaurant_photo_search.search_restaurant_photos_use_case",
+        fake_photo_search,
     )
     return calls
 
@@ -120,6 +147,11 @@ def test_candidates_and_associated_photos_are_returned(
         "search_restaurant_photos",
     ]
     assert all(call[2] is db_session for call in calls)
+    assert calls[1][1]["osm_place_id"] == UUID(candidate["id"])
+    assert calls[0][1]["include_places_with_photos"] is True
+    assert response.restaurants_with_photos[0].photos[0].image_url == (
+        "/images/files/photo.jpg"
+    )
 
 
 def test_candidate_without_returned_photo_is_not_claimed_to_have_no_photos(
@@ -276,7 +308,7 @@ def test_photo_limit_is_applied_per_candidate(
         ("search_restaurant_photos", [make_candidate()]),
     ],
 )
-def test_tool_error_raises_instead_of_returning_empty_success(
+def test_search_dependency_error_raises_instead_of_returning_empty_success(
     db_session: Session,
     monkeypatch,
     failing_tool: str,
@@ -289,7 +321,14 @@ def test_tool_error_raises_instead_of_returning_empty_success(
         error=(failing_tool, "tool_execution_failed"),
     )
 
-    with pytest.raises(RestaurantPhotoWorkflowError, match=failing_tool):
+    with pytest.raises(
+        RestaurantPhotoWorkflowError,
+        match=(
+            "candidate search failed"
+            if failing_tool == "search_restaurants"
+            else "search_restaurant_photos"
+        ),
+    ):
         run_workflow(db_session)
 
 

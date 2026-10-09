@@ -24,6 +24,7 @@ def search_osm_places_by_text(
     top_k: int = 12,
     city: str | None = None,
     cuisine: str | None = None,
+    include_places_with_photos: bool = False,
 ) -> OsmRestaurantSearchResponse:
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
@@ -38,9 +39,11 @@ def search_osm_places_by_text(
     )
     statement = (
         select(OsmPlace, cosine_distance)
-        .where(OsmPlace.embedding.is_not(None), ~has_photos)
+        .where(OsmPlace.embedding.is_not(None))
         .order_by(cosine_distance)
     )
+    if not include_places_with_photos:
+        statement = statement.where(~has_photos)
     if city:
         statement = statement.where(
             func.lower(OsmPlace.city) == city.strip().lower()

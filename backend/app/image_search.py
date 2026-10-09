@@ -105,13 +105,18 @@ def search_images_by_text(
     sample_images_only: bool = False,
     city: str | None = None,
     cuisine: str | None = None,
+    osm_place_id: UUID | None = None,
 ) -> list[ImageSearchResult]:
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
     if osm_places_only and sample_images_only:
         raise ValueError("Only one image corpus can be selected")
-    if sample_images_only and (city is not None or cuisine is not None):
+    if sample_images_only and (
+        city is not None or cuisine is not None or osm_place_id is not None
+    ):
         raise ValueError("Place filters cannot be used with the sample image corpus")
+    if osm_place_id is not None and not osm_places_only:
+        raise ValueError("OSM place ID filter requires osm_places_only=True")
 
     query_embedding = embed_text_for_image_search(query)
     query_tokens = _tokens(query)
@@ -143,7 +148,10 @@ def search_images_by_text(
                     evidence_request.feature_requirements,
                 )
             )
-    elif sample_images_only:
+    if osm_place_id is not None:
+        metadata_statement = metadata_statement.where(OsmPlace.id == osm_place_id)
+        image_statement = image_statement.where(OsmPlace.id == osm_place_id)
+    if sample_images_only:
         metadata_statement = metadata_statement.where(
             OsmPlace.id.is_(None),
             ImageEmbedding.source_url.is_(None),
@@ -194,6 +202,10 @@ def search_images_by_text(
             matching_images_statement = matching_images_statement.where(
                 OsmPlace.id.is_(None),
                 ImageEmbedding.source_url.is_(None),
+            )
+        if osm_place_id is not None:
+            matching_images_statement = matching_images_statement.where(
+                OsmPlace.id == osm_place_id
             )
         if city:
             matching_images_statement = matching_images_statement.where(

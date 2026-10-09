@@ -1,12 +1,24 @@
+import logging
+from pathlib import Path
 from typing import Any, Literal, TypedDict
+from urllib.parse import quote
+from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.schemas import OsmRestaurantSearchResponse, OsmRestaurantSearchResult
-from app.tools.registry import dispatch_tool_call
+from app.application.restaurant_discovery import (
+    search_restaurant_photos as search_restaurant_photos_use_case,
+    search_restaurants as search_restaurants_use_case,
+)
+from app.schemas import (
+    ImageSearchRequest,
+    ImageSearchResult,
+    OsmRestaurantSearchRequest,
+    OsmRestaurantSearchResponse,
+    OsmRestaurantSearchResult,
+)
 from app.workflows.schemas import (
     RestaurantPhoto,
     RestaurantPhotoWorkflowRequest,
@@ -14,9 +26,11 @@ from app.workflows.schemas import (
     RestaurantWithPhotos,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class RestaurantPhotoWorkflowError(RuntimeError):
-    """Raised when a Tool cannot provide a valid result for this workflow."""
+    """Raised when a workflow search dependency cannot provide a valid result."""
 
 
 class WorkflowContext(TypedDict):
@@ -38,45 +52,27 @@ class WorkflowState(TypedDict):
     candidates_without_returned_photos: list[dict[str, Any]]
 
 
-def _tool_output(name: str, arguments: dict[str, Any], session: Session) -> Any:
-    result = dispatch_tool_call(name, arguments, session)
-    if not isinstance(result, dict):
-        raise RestaurantPhotoWorkflowError(
-            f"Tool '{name}' returned an invalid result."
-        )
-    if "error" in result:
-        error = result["error"]
-        code = error.get("code", "tool_error") if isinstance(error, dict) else "tool_error"
-        raise RestaurantPhotoWorkflowError(
-            f"Tool '{name}' failed ({code})."
-        )
-    if "output" not in result:
-        raise RestaurantPhotoWorkflowError(
-            f"Tool '{name}' returned no output."
-        )
-    return result["output"]
-
-
 def search_candidates(
     state: WorkflowState,
     runtime: Runtime[WorkflowContext],
 ) -> dict[str, Any]:
     try:
         result = OsmRestaurantSearchResponse.model_validate(
-            _tool_output(
-                "search_restaurants",
-                {
-                    "query": state["query"],
-                    "top_k": state["candidate_limit"],
-                    "city": state["city"],
-                    "cuisine": state["cuisine"],
-                },
+            search_restaurants_use_case(
+                OsmRestaurantSearchRequest(
+                    query=state["query"],
+                    top_k=state["candidate_limit"],
+                    city=state["city"],
+                    cuisine=state["cuisine"],
+                ),
                 runtime.context["session"],
+                include_places_with_photos=True,
             )
         )
-    except (ValidationError, TypeError, ValueError) as error:
+    except Exception as error:
+        logger.exception("Candidate search for the photo workflow failed")
         raise RestaurantPhotoWorkflowError(
-            "Tool 'search_restaurants' returned an invalid payload."
+            "Restaurant candidate search failed."
         ) from error
 
     return {
@@ -111,29 +107,34 @@ def search_photos_for_candidates(
         ]
         query = " ".join(part for part in query_parts if part)
         try:
-            tool_photos = _tool_output(
-                "search_restaurant_photos",
-                {
-                    "query": query,
-                    "top_k": state["photos_per_candidate"],
-                    "city": state["city"] or candidate.get("city"),
-                    "cuisine": state["cuisine"],
-                },
+            photo_results = search_restaurant_photos_use_case(
+                ImageSearchRequest(
+                    query=query,
+                    top_k=state["photos_per_candidate"],
+                    city=state["city"] or candidate.get("city"),
+                    cuisine=state["cuisine"],
+                    osm_places_only=True,
+                ),
                 runtime.context["session"],
+                osm_place_id=UUID(candidate["id"]),
             )
-            if not isinstance(tool_photos, list):
+            if not isinstance(photo_results, list):
                 raise RestaurantPhotoWorkflowError(
-                    "Tool 'search_restaurant_photos' returned an invalid payload."
+                    "Photo search returned an invalid payload."
                 )
             parsed_photos = [
-                RestaurantPhoto.model_validate(photo)
-                for photo in tool_photos[: state["photos_per_candidate"]]
+                RestaurantPhoto.model_validate(_serialize_photo(photo))
+                for photo in photo_results[: state["photos_per_candidate"]]
             ]
         except RestaurantPhotoWorkflowError:
             raise
-        except (ValidationError, TypeError, ValueError) as error:
+        except Exception as error:
+            logger.exception(
+                "Candidate-scoped photo search failed for OSM place %s",
+                candidate["id"],
+            )
             raise RestaurantPhotoWorkflowError(
-                "Tool 'search_restaurant_photos' returned an invalid payload."
+                "Tool 'search_restaurant_photos' failed for a restaurant candidate."
             ) from error
 
         for photo in parsed_photos:
@@ -179,6 +180,21 @@ def search_photos_for_candidates(
         "photo_search_status": "completed",
         "warnings": warnings,
     }
+
+
+def _serialize_photo(photo: Any) -> dict[str, Any]:
+    if not isinstance(photo, ImageSearchResult):
+        raise RestaurantPhotoWorkflowError(
+            "Photo search returned an invalid result type."
+        )
+    filename = Path(photo.image_path.replace("\\", "/")).name
+    if not filename:
+        raise RestaurantPhotoWorkflowError(
+            "Photo search returned an image without a usable filename."
+        )
+    result = photo.model_dump(mode="json", exclude={"image_path"})
+    result["image_url"] = f"/images/files/{quote(filename, safe='')}"
+    return result
 
 
 def compose_response(state: WorkflowState) -> dict[str, Any]:
