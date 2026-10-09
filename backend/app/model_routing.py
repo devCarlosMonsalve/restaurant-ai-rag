@@ -8,12 +8,15 @@ from google.genai import types
 from litellm import Router
 from litellm.types.utils import ModelResponse
 
+from app.observability import traced_span
 from app.tools.registry import get_function_declarations
 
 logger = logging.getLogger(__name__)
 
 RESTAURANT_SEARCH_MODEL_ALIAS = "restaurant-search-agent"
 RESTAURANT_SEARCH_LITELLM_MODEL = "gemini/gemini-3.8-flash"
+RESTAURANT_SEARCH_REQUEST_TIMEOUT_SECONDS = 60
+RESTAURANT_SEARCH_MAX_OUTPUT_TOKENS = 1024
 
 
 class ModelRouteError(RuntimeError):
@@ -28,6 +31,7 @@ def create_restaurant_search_router(api_key: str) -> Router:
                 "litellm_params": {
                     "model": RESTAURANT_SEARCH_LITELLM_MODEL,
                     "api_key": api_key,
+                    "timeout": RESTAURANT_SEARCH_REQUEST_TIMEOUT_SECONDS,
                 },
             }
         ],
@@ -48,7 +52,7 @@ def call_restaurant_search_model(
         "model": RESTAURANT_SEARCH_MODEL_ALIAS,
         "messages": _to_litellm_messages(contents, system_instruction),
         "temperature": 0.2,
-        "max_tokens": 1024,
+        "max_tokens": RESTAURANT_SEARCH_MAX_OUTPUT_TOKENS,
         "stream": False,
     }
     if tools_enabled:
@@ -56,7 +60,25 @@ def call_restaurant_search_model(
         request["tool_choice"] = "auto"
 
     try:
-        response = router.completion(**request)
+        with traced_span(
+            "gen_ai.chat",
+            {
+                "gen_ai.request.model": RESTAURANT_SEARCH_LITELLM_MODEL,
+                "gen_ai.request.max_tokens": RESTAURANT_SEARCH_MAX_OUTPUT_TOKENS,
+            },
+        ) as span:
+            response = router.completion(**request)
+            usage = getattr(response, "usage", None)
+            if isinstance(response, ModelResponse) and usage is not None:
+                if usage.prompt_tokens is not None:
+                    span.set_attribute("gen_ai.usage.input_tokens", usage.prompt_tokens)
+                if usage.completion_tokens is not None:
+                    span.set_attribute(
+                        "gen_ai.usage.output_tokens",
+                        usage.completion_tokens,
+                    )
+                if usage.total_tokens is not None:
+                    span.set_attribute("gen_ai.usage.total_tokens", usage.total_tokens)
     except Exception as error:
         logger.error(
             "Restaurant search model route failed with %s",

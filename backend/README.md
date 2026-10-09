@@ -213,9 +213,14 @@ no checkpointer or persistent memory.
 
 LiteLLM maps the `restaurant-search-agent` model alias to the single
 `gemini/gemini-3.8-flash` route. Retries and response caching are disabled, and
-no fallback provider is configured yet. The existing Google GenAI Tool schemas
-and conversation history are translated to LiteLLM's chat-completion format;
-the Agent graph still owns tool execution and its call limits.
+each model request has a 60-second timeout. No fallback provider is configured
+yet. The existing Google GenAI Tool schemas and conversation history are
+translated to LiteLLM's chat-completion format; the Agent graph still owns tool
+execution and its call limits.
+
+When Phoenix tracing is enabled, model-call spans record the model, output-token
+limit, and provider-reported input, output, and total token counts. Prompts,
+conversation messages, and model responses are not added to these spans.
 
 The routing and tool-cycle tests use synthetic LiteLLM responses and do not
 contact Gemini:
