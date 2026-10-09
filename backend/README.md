@@ -539,3 +539,100 @@ handlers, so they do not require PostgreSQL or external providers:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\test_mcp_server.py
 ```
+
+## A2A server
+
+The standalone A2A server exposes the existing Restaurant Search Agent to an
+independent agent. A travel-planning agent can delegate restaurant discovery
+and receive the structured answer and photo evidence, while retaining
+responsibility for the itinerary. This service does not implement that planner
+or coordinate multiple internal agents; it reuses the existing Agent and Tool
+registry without changing their contracts.
+
+Start the server from `backend`:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.a2a_server
+```
+
+It listens on loopback at `http://127.0.0.1:8001`. The Agent Card is available at
+`http://127.0.0.1:8001/.well-known/agent-card.json`, and JSON-RPC requests use
+the root path. A client can discover the card and send a text request with the
+official SDK:
+
+```python
+import asyncio
+
+from a2a.client import A2ACardResolver, ClientConfig, create_client
+from a2a.helpers import new_text_message
+from a2a.types import Role, SendMessageRequest
+import httpx
+
+
+async def main():
+    async with httpx.AsyncClient() as http_client:
+        card = await A2ACardResolver(
+            http_client,
+            "http://127.0.0.1:8001",
+        ).get_agent_card()
+
+    client = await create_client(
+        agent=card,
+        client_config=ClientConfig(streaming=False),
+    )
+    try:
+        request = SendMessageRequest(
+            message=new_text_message(
+                "Find vegetarian restaurants in Madrid",
+                role=Role.ROLE_USER,
+            )
+        )
+        async for response in client.send_message(request):
+            print(response)
+    finally:
+        await client.close()
+
+
+asyncio.run(main())
+```
+
+The task artifact contains the existing Agent response as an
+`application/json` data part. Any relative `image_url` values in that response
+are resolved against the FastAPI service, not the A2A port. Requests must be
+plain text between 1 and 2,000 characters. The task store is in memory, so
+history is lost when the server restarts; cancellation is not supported.
+Incoming message history is retained in that store for the task lifetime, but
+Phoenix spans exclude the request text and result content. The server binds
+only to loopback and has no authentication, so it is for local development,
+not remote deployment. A valid search uses the same database and Gemini
+configuration as the existing Agent.
+
+The A2A protocol tests use an in-memory ASGI transport and a mocked Agent
+result; they do not require PostgreSQL or call Gemini:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_a2a_server.py
+```
+
+### Itinerary planner A2A client
+
+`app.itinerary_planner_client` is a separate client-side delegation component:
+it discovers the restaurant Agent Card, sends a text task, checks the task
+state, and validates the `restaurant_discovery_result` JSON artifact against
+the existing response schema. It returns restaurant evidence to its caller;
+it does not invent or generate itinerary details.
+
+With the A2A server running, a real request can be sent from a second terminal:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.itinerary_planner_client "Find vegetarian restaurants in Madrid"
+```
+
+This command invokes the existing restaurant Agent and therefore needs its
+database and Gemini configuration; a successful live call may incur provider
+costs. The client tests instead use the A2A server through an in-memory
+transport and replace its Agent execution with a synthetic result:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_itinerary_planner_client.py
+```
