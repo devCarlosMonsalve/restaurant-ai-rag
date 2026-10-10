@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.models.osm_place import OsmPlace
 from app.open_data_sources import OSMRestaurant
-from app.osm_ingestion import upsert_osm_place
+from app.ingestion import upsert_osm_place
 
 
 def test_osm_place_upsert_updates_existing_place(

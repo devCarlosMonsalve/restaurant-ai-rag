@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.image_ingestion import ImageSourceMetadata, ingest_image_to_database
+from app.ingestion import ImageSourceMetadata, ingest_image_to_database, upsert_osm_place
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.open_data_sources import (
@@ -21,7 +21,6 @@ from app.open_data_sources import (
     fetch_commons_photos,
     fetch_madrid_restaurants,
 )
-from app.osm_ingestion import upsert_osm_place
 
 IMAGES_DIR = Path(__file__).parent / "data" / "images" / "commons"
 

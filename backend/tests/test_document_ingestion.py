@@ -3,7 +3,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.document_ingestion import ingest_txt_to_database
+from app.ingestion import ingest_txt_to_database
 from app.models.document_chunk import DocumentChunk
 
 
@@ -16,7 +16,7 @@ def test_ingest_txt_embeds_and_stores_chunks(
     text_file.write_text("uno dos tres cuatro cinco seis siete", encoding="utf-8")
 
     monkeypatch.setattr(
-        "app.document_ingestion.embed_document_chunks",
+        "app.ingestion.application.documents.embed_document_chunks",
         lambda chunks, document_title: [[0.1] * 768 for _ in chunks],
     )
 

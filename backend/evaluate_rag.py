@@ -15,7 +15,7 @@ from app.knowledge.infrastructure.generation.answer_chain import (
     generate_grounded_answer,
 )
 from app.database import SessionLocal
-from app.document_ingestion import ingest_txt_to_database
+from app.ingestion import ingest_txt_to_database
 from app.models.document_chunk import DocumentChunk
 from app.knowledge.infrastructure.postgres.retriever import (
     PostgresDocumentRetriever,

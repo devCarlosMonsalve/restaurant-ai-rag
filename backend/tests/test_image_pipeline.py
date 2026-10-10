@@ -17,7 +17,7 @@ from app.image_embeddings import (
     embed_image,
     embed_text_for_image_search,
 )
-from app.image_ingestion import ImageSourceMetadata, ingest_image_to_database
+from app.ingestion import ImageSourceMetadata, ingest_image_to_database
 from app.image_search import (
     _metadata_match_count,
     _tokens,
@@ -25,7 +25,7 @@ from app.image_search import (
 )
 from app.models.image_embedding import ImageEmbedding
 from app.open_data_sources import OSMRestaurant
-from app.osm_ingestion import upsert_osm_place
+from app.ingestion import upsert_osm_place
 from app.schemas import ImageSearchResult
 
 
@@ -80,7 +80,7 @@ def test_ingestion_stores_image_embedding_and_updates_existing_path(
     image_path = tmp_path / "pasta.png"
     image_path.write_bytes(b"mock image")
     monkeypatch.setattr(
-        "app.image_ingestion.embed_image",
+        "app.ingestion.application.images.embed_image",
         lambda path: [0.1] * IMAGE_EMBEDDING_DIMENSIONS,
     )
 
@@ -102,7 +102,7 @@ def test_ingestion_persists_open_license_and_osm_provenance(
     image_path = tmp_path / "commons-photo.jpg"
     image_path.write_bytes(b"mock image")
     monkeypatch.setattr(
-        "app.image_ingestion.embed_image",
+        "app.ingestion.application.images.embed_image",
         lambda path: [0.1] * IMAGE_EMBEDDING_DIMENSIONS,
     )
     place = upsert_osm_place(
@@ -249,7 +249,7 @@ def test_osm_image_search_requires_all_requested_feature_evidence(
             return [] if self.calls == 1 else candidates
 
     monkeypatch.setattr(
-        "app.image_search.embed_text_for_image_search",
+        "app.infrastructure.persistence.postgres.image_queries.embed_text_for_image_search",
         lambda _: [0.0] * 512,
     )
 
@@ -292,7 +292,7 @@ def test_osm_image_search_rejects_stale_kosher_evidence(
             return [] if self.calls == 1 else candidates
 
     monkeypatch.setattr(
-        "app.image_search.embed_text_for_image_search",
+        "app.infrastructure.persistence.postgres.image_queries.embed_text_for_image_search",
         lambda _: [0.0] * 512,
     )
 
@@ -327,7 +327,7 @@ def test_osm_image_search_requires_live_music_evidence(
             return [] if self.calls == 1 else candidates
 
     monkeypatch.setattr(
-        "app.image_search.embed_text_for_image_search",
+        "app.infrastructure.persistence.postgres.image_queries.embed_text_for_image_search",
         lambda _: [0.0] * 512,
     )
 
@@ -380,7 +380,7 @@ def test_place_scoped_image_search_excludes_more_similar_other_restaurant(
         ]
     )
     monkeypatch.setattr(
-        "app.image_search.embed_text_for_image_search",
+        "app.infrastructure.persistence.postgres.image_queries.embed_text_for_image_search",
         lambda _: [0.0] * IMAGE_EMBEDDING_DIMENSIONS,
     )
 
@@ -418,7 +418,7 @@ def test_place_scoped_image_search_returns_multiple_photos_only_for_target(
     other = _linked_image_candidate("Other Restaurant", other_place_id, 0.01)
     session = _PlaceScopedFakeSession([target_first, target_second, other])
     monkeypatch.setattr(
-        "app.image_search.embed_text_for_image_search",
+        "app.infrastructure.persistence.postgres.image_queries.embed_text_for_image_search",
         lambda _: [0.0] * IMAGE_EMBEDDING_DIMENSIONS,
     )
 
@@ -441,7 +441,7 @@ def test_place_scoped_image_search_without_indexed_photos_returns_empty(
 ) -> None:
     session = _PlaceScopedFakeSession([])
     monkeypatch.setattr(
-        "app.image_search.embed_text_for_image_search",
+        "app.infrastructure.persistence.postgres.image_queries.embed_text_for_image_search",
         lambda _: [0.0] * IMAGE_EMBEDDING_DIMENSIONS,
     )
 
@@ -462,7 +462,7 @@ def test_general_image_search_keeps_global_ranking_without_place_filter(
     more_similar = _linked_image_candidate("Other Restaurant", uuid4(), 0.01)
     session = _PlaceScopedFakeSession([target, more_similar])
     monkeypatch.setattr(
-        "app.image_search.embed_text_for_image_search",
+        "app.infrastructure.persistence.postgres.image_queries.embed_text_for_image_search",
         lambda _: [0.0] * IMAGE_EMBEDDING_DIMENSIONS,
     )
 

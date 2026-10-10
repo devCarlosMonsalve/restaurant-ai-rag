@@ -21,7 +21,7 @@ def test_photo_workflow_option_includes_indexed_places_without_changing_defaults
         lambda self, query: literal(0.1),
     )
     monkeypatch.setattr(
-        "app.restaurant_search.embed_search_query",
+        "app.infrastructure.persistence.postgres.restaurant_queries.embed_search_query",
         lambda _: [0.0] * 768,
     )
 

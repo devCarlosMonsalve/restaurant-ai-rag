@@ -50,7 +50,7 @@ def test_postgres_image_search_scopes_results_and_checks_exact_osm_url(
     postgres_session.flush()
 
     monkeypatch.setattr(
-        "app.image_search.embed_text_for_image_search",
+        "app.infrastructure.persistence.postgres.image_queries.embed_text_for_image_search",
         lambda _: query_vector,
     )
 
@@ -145,7 +145,7 @@ def test_postgres_restaurant_search_photo_exclusion_and_opt_in_filters(
     postgres_session.flush()
 
     monkeypatch.setattr(
-        "app.restaurant_search.embed_search_query",
+        "app.infrastructure.persistence.postgres.restaurant_queries.embed_search_query",
         lambda _: query_vector,
     )
 

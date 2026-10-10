@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 
 from app.database import SessionLocal
-from app.document_ingestion import ingest_txt_to_database
+from app.ingestion import ingest_txt_to_database
 
 
 def main() -> None:

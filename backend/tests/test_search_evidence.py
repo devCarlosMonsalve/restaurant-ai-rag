@@ -149,7 +149,7 @@ def test_feature_search_skips_unverified_semantic_matches(
             ]
 
     monkeypatch.setattr(
-        "app.restaurant_search.embed_search_query",
+        "app.infrastructure.persistence.postgres.restaurant_queries.embed_search_query",
         lambda _: [0.0] * 768,
     )
 
@@ -173,7 +173,7 @@ def test_feature_search_without_matching_tags_returns_no_evidence(
             return []
 
     monkeypatch.setattr(
-        "app.restaurant_search.embed_search_query",
+        "app.infrastructure.persistence.postgres.restaurant_queries.embed_search_query",
         lambda _: [0.0] * 768,
     )
 
@@ -203,7 +203,7 @@ def test_stale_kosher_data_is_not_returned_as_verified(
             return [(place, 0.01)]
 
     monkeypatch.setattr(
-        "app.restaurant_search.embed_search_query",
+        "app.infrastructure.persistence.postgres.restaurant_queries.embed_search_query",
         lambda _: [0.0] * 768,
     )
 
@@ -227,7 +227,7 @@ def test_unverified_ambiance_keeps_semantic_results_but_warns(
             return [(place, 0.2)]
 
     monkeypatch.setattr(
-        "app.restaurant_search.embed_search_query",
+        "app.infrastructure.persistence.postgres.restaurant_queries.embed_search_query",
         lambda _: [0.0] * 768,
     )
 
@@ -251,7 +251,7 @@ def test_partial_evidence_warns_about_unverified_ambiance(
             return [(place, 0.2)]
 
     monkeypatch.setattr(
-        "app.restaurant_search.embed_search_query",
+        "app.infrastructure.persistence.postgres.restaurant_queries.embed_search_query",
         lambda _: [0.0] * 768,
     )
 
@@ -277,7 +277,7 @@ def test_step_free_access_is_confirmed_with_osm_wheelchair_yes(
             return [(place, 0.2)]
 
     monkeypatch.setattr(
-        "app.restaurant_search.embed_search_query",
+        "app.infrastructure.persistence.postgres.restaurant_queries.embed_search_query",
         lambda _: [0.0] * 768,
     )
 
@@ -300,7 +300,7 @@ def test_live_music_search_only_returns_tagged_places(monkeypatch) -> None:
             return [(untagged_place, 0.01), (tagged_place, 0.2)]
 
     monkeypatch.setattr(
-        "app.restaurant_search.embed_search_query",
+        "app.infrastructure.persistence.postgres.restaurant_queries.embed_search_query",
         lambda _: [0.0] * 768,
     )
 

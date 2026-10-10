@@ -3,7 +3,7 @@ from pathlib import Path
 
 from app.database import SessionLocal
 from app.image_embeddings import SUPPORTED_IMAGE_SUFFIXES
-from app.image_ingestion import ingest_image_to_database
+from app.ingestion import ingest_image_to_database
 
 
 def main() -> None:

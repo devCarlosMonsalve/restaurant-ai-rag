@@ -2,8 +2,12 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.image_search import search_images_by_text
-from app.restaurant_search import search_osm_places_by_text
+from app.infrastructure.persistence.postgres.image_queries import (
+    search_images_by_text,
+)
+from app.infrastructure.persistence.postgres.restaurant_queries import (
+    search_osm_places_by_text,
+)
 from app.schemas import ImageSearchResult, OsmRestaurantSearchResponse
 
 
