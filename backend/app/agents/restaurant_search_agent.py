@@ -1,6 +1,4 @@
 import logging
-import re
-import unicodedata
 from typing import Any, Literal, TypedDict
 
 from google.genai import types
@@ -12,6 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.application.restaurant_discovery import (
     search_verified_candidate_photos,
+)
+from app.domain.restaurant_discovery.query_intent import (
+    asks_for_photos as _asks_for_photos,
+    is_spanish_query as _is_spanish_query,
+    normalize_text as _normalize_text,
+    unsupported_live_data_notice as _unsupported_live_data_notice,
 )
 from app.agents.schemas import (
     RestaurantSearchAgentCandidate,
@@ -291,14 +295,6 @@ def _tool_error(code: str, message: str) -> dict[str, Any]:
     return {"error": {"code": code, "message": message}}
 
 
-def _asks_for_photos(query: str) -> bool:
-    normalized_query = _normalize_text(query)
-    return any(
-        term in normalized_query
-        for term in ("foto", "fotos", "imagen", "imagenes", "photo", "photos", "image", "images")
-    )
-
-
 def _photo_search_notice(
     query: str,
     *,
@@ -319,101 +315,6 @@ def _photo_search_notice(
     if _is_spanish_query(query):
         return "No he encontrado fotos indexadas para esta búsqueda."
     return "I found no indexed photos for this search."
-
-
-def _unsupported_live_data_notice(query: str) -> str | None:
-    normalized_query = _normalize_text(query)
-    asks_availability = any(
-        term in normalized_query
-        for term in (
-            "disponibilidad",
-            "reservar",
-            "reserva",
-            "mesa esta noche",
-            "mesa hoy",
-            "reservation",
-            "availability",
-            "book a table",
-            "table tonight",
-            "available table",
-        )
-    )
-    asks_current_price = any(
-        term in normalized_query
-        for term in (
-            "cuanto cuesta",
-            "cuanto vale",
-            "precio actual",
-            "precios actuales",
-            "precio del menu",
-            "coste del menu",
-            "costo del menu",
-            "how much does",
-            "how much is",
-            "menu price",
-            "current price",
-        )
-    )
-    if not asks_availability and not asks_current_price:
-        return None
-
-    spanish = _is_spanish_query(query)
-    if spanish:
-        if asks_availability and asks_current_price:
-            return (
-                "No puedo verificar la disponibilidad de mesa esta noche ni "
-                "los precios actuales del menú con las herramientas disponibles."
-            )
-        if asks_availability:
-            return (
-                "No puedo verificar la disponibilidad actual de mesas con las "
-                "herramientas disponibles."
-            )
-        return (
-            "No puedo verificar los precios actuales del menú con las "
-            "herramientas disponibles."
-        )
-
-    if asks_availability and asks_current_price:
-        return (
-            "I can't verify current table availability or menu prices with "
-            "the available tools."
-        )
-    if asks_availability:
-        return "I can't verify current table availability with the available tools."
-    return "I can't verify current menu prices with the available tools."
-
-
-def _normalize_text(value: str) -> str:
-    ascii_value = (
-        unicodedata.normalize("NFKD", value)
-        .encode("ascii", "ignore")
-        .decode("ascii")
-        .casefold()
-    )
-    return " ".join(re.findall(r"[a-z0-9]+", ascii_value))
-
-
-def _is_spanish_query(query: str) -> bool:
-    normalized_query = _normalize_text(query)
-    return any(
-        term in normalized_query
-        for term in (
-            "disponibilidad",
-            "reservar",
-            "reserva",
-            "mesa",
-            "cuanto",
-            "cuesta",
-            "precio",
-            "foto",
-            "fotos",
-            "imagen",
-            "imagenes",
-            "busca",
-            "restaurante",
-        )
-    )
 
 
 def _call_model_node(

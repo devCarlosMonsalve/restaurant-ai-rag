@@ -80,7 +80,7 @@ def test_ingestion_stores_image_embedding_and_updates_existing_path(
     image_path = tmp_path / "pasta.png"
     image_path.write_bytes(b"mock image")
     monkeypatch.setattr(
-        "app.ingestion.application.images.embed_image",
+        "app.ingestion.composition.embed_image",
         lambda path: [0.1] * IMAGE_EMBEDDING_DIMENSIONS,
     )
 
@@ -102,7 +102,7 @@ def test_ingestion_persists_open_license_and_osm_provenance(
     image_path = tmp_path / "commons-photo.jpg"
     image_path.write_bytes(b"mock image")
     monkeypatch.setattr(
-        "app.ingestion.application.images.embed_image",
+        "app.ingestion.composition.embed_image",
         lambda path: [0.1] * IMAGE_EMBEDDING_DIMENSIONS,
     )
     place = upsert_osm_place(

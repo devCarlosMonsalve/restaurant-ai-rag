@@ -56,11 +56,15 @@ backend/
 │   ├── agents/                         # model/tool orchestration
 │   ├── application/                    # existing use cases and ports
 │   ├── core/                           # settings
-│   ├── domain/restaurant_discovery/    # pure discovery policies
+│   ├── domain/                         # pure discovery and OSM indexing policies
+│   │   ├── osm_place.py
+│   │   └── restaurant_discovery/       # query intent, evidence, and photo policies
 │   ├── infrastructure/
 │   │   ├── filesystem/                 # document file adapter
-│   │   └── persistence/postgres/       # catalog, pgvector, and search adapters
-│   ├── ingestion/application/          # document, image, and OSM use cases
+│   │   └── persistence/postgres/       # catalog, ingestion, pgvector, and search adapters
+│   ├── ingestion/
+│   │   ├── application/                # ports and provider-independent use cases
+│   │   └── composition.py              # concrete provider and persistence wiring
 │   ├── knowledge/
 │   │   ├── application/                # retrieval and answer use cases
 │   │   ├── domain/                     # text preparation
@@ -95,14 +99,14 @@ business invariant currently exists.
 
 | Package files | Responsibility / decision |
 | --- | --- |
-| `app/domain/__init__.py`, `app/domain/restaurant_discovery/{__init__.py,evidence.py,photo_association.py}` | Keep as pure domain policies; no ORM entity is introduced. |
+| `app/domain/__init__.py`, `app/domain/restaurant_discovery/{__init__.py,evidence.py,photo_association.py,query_intent.py}`, `app/domain/osm_place.py` | Keep as pure domain policies; no ORM entity is introduced. Query capability/photography intent and OSM embedding invalidation remain independent of agents and SQLAlchemy persistence. |
 | `app/application/{__init__.py,ports.py,restaurant_discovery.py,document_answer.py,restaurant_catalog.py}` | Keep as application ports/use cases. The catalog module contains only a protocol and delegation functions. |
 | `app/infrastructure/{__init__.py,filesystem/__init__.py,filesystem/text_documents.py}` | Keep; filesystem reading and text-file normalization are adapters, not HTTP/application code. |
-| `app/infrastructure/persistence/{__init__.py,postgres/__init__.py,postgres/evidence_queries.py,postgres/restaurant_discovery.py,postgres/restaurant_queries.py,postgres/image_queries.py,postgres/restaurant_catalog.py}` | Keep; PostgreSQL/pgvector query and ORM mapping implementations belong here. Validate via focused query/API tests and the optional PostgreSQL integration suite. |
+| `app/infrastructure/persistence/{__init__.py,postgres/__init__.py,postgres/evidence_queries.py,postgres/restaurant_discovery.py,postgres/restaurant_queries.py,postgres/image_queries.py,postgres/restaurant_catalog.py,postgres/ingestion.py}` | Keep; PostgreSQL/pgvector query and ORM mapping implementations belong here, including ingestion persistence and transaction ownership. Validate via focused query/API and ingestion tests plus the optional PostgreSQL integration suite. |
 | `app/knowledge/{__init__.py,domain/__init__.py,domain/text.py,application/__init__.py,application/ports.py,application/answer_question.py,application/search_documents.py,infrastructure/__init__.py,infrastructure/postgres/__init__.py,infrastructure/postgres/retriever.py,infrastructure/generation/__init__.py,infrastructure/generation/answer_chain.py}` | Keep the context-first structure; it separates text policy, retrieval/answer use cases, database retrieval, and Gemini/LangChain generation. Validate with RAG/retrieval tests using mocks. |
-| `app/ingestion/{__init__.py,application/__init__.py,application/documents.py,application/images.py,application/osm.py}` | Keep; document, image, and OSM indexing coordination is grouped without changing transaction, provenance, corpus, or provider behavior. Validate with ingestion and compatibility tests. |
+| `app/ingestion/{__init__.py,composition.py,application/{__init__.py,ports.py,documents_usecase.py,images_usecase.py}}` | Keep; application use cases depend on ports, while composition wires filesystem/embedding providers and PostgreSQL adapters. `application/{documents.py,images.py,osm.py}` remain thin temporary compatibility facades. Validate with use-case, transaction, ingestion, and compatibility tests. |
 | `app/models/{__init__.py,base.py,restaurant.py,osm_place.py,image_embedding.py,document_chunk.py}` | Keep as ORM persistence records. `alembic/env.py` imports `app.models` so all tables remain registered. Validate metadata imports and Alembic history. |
-| `app/agents/{__init__.py,schemas.py,restaurant_search_agent.py}` | Keep public Agent schemas unchanged. `restaurant_search_agent.py` remains the LangGraph/model/tool orchestration boundary; splitting deterministic policies is a future, separately tested change because turn/tool limits and photo behavior are contract-sensitive. |
+| `app/agents/{__init__.py,schemas.py,restaurant_search_agent.py}` | Keep public Agent schemas unchanged. `restaurant_search_agent.py` remains the LangGraph/model/tool orchestration boundary; deterministic query-intent detection and capability notices live in `domain/restaurant_discovery/query_intent.py`, while turn/tool limits and photo behavior remain contract-sensitive graph concerns. |
 | `app/workflows/{__init__.py,schemas.py,restaurant_photo_search.py}` | Keep workflow DTOs and graph boundary. The photo workflow coordinates discovery and scoped image lookup; exact source-URL association remains a domain policy. Do not merge it into an aggregate. |
 | `app/tools/{__init__.py,registry.py,restaurant_search.py,restaurant_photos.py,document_search.py,document_answer.py}` | Keep the registry and thin adapters. MCP and the model Agent share names, input schemas, hidden arguments, result serialization, and stable error categories. |
 
@@ -122,7 +126,7 @@ and must preserve the existing commit/rollback and re-indexing behavior.
 | `mcp_server.py`, `mcp_schemas.py` | MCP delivery adapter and public MCP DTOs | Keep as protocol/import entry points. | Stdio launch and public schemas are compatibility boundaries; validate with `test_mcp_server.py`. |
 | `schemas.py` | Shared FastAPI/Tool request and response DTOs | Keep for this incremental migration; split only along stable context contracts. | Moving a large shared DTO module would touch HTTP, Tools, MCP, Agents, and tests without changing domain behavior. Validate with API, Tool, MCP, and Agent contract tests. |
 | `restaurant_search.py`, `image_search.py` | Legacy search import paths | Keep as compatibility facades; SQL/pgvector implementations are in `infrastructure/persistence/postgres/restaurant_queries.py` and `image_queries.py`. | Retains existing callers while making PostgreSQL infrastructure own the queries. Validate discovery, image pipeline, and PostgreSQL query tests. |
-| `document_ingestion.py`, `image_ingestion.py`, `osm_ingestion.py` | Legacy ingestion import paths | Keep as compatibility facades; use cases live in `ingestion/application/`. | Existing CLI and test imports continue to work. Validate document/image/OSM ingestion and compatibility tests. |
+| `document_ingestion.py`, `image_ingestion.py`, `osm_ingestion.py` | Legacy ingestion import paths | Keep as stable facades into `app.ingestion`; composition wires provider-independent use cases to PostgreSQL adapters. | Existing CLI and test imports continue to work. Validate document/image/OSM ingestion and compatibility tests. |
 | `coverage_audit.py` | Aggregation for an operational coverage report | Keep for now as a shared audit helper. | The report consumes ORM-shaped records and OSM feature labels; splitting it from the CLI is not needed to establish a business aggregate. Validate with `test_coverage_audit.py`. |
 | `database.py` | SQLAlchemy engine, session factory, FastAPI session dependency | Keep as explicit shared composition infrastructure. | Alembic, FastAPI, MCP, A2A, and tests rely on the same session factory; moving it would add compatibility wrappers without changing the boundary. Validate imports, API/MCP/A2A tests, and Alembic. |
 | `embeddings.py`, `image_embeddings.py` | Gemini text and OpenCLIP provider adapters | Keep as shared provider modules for now. | Multiple ingestion/search contexts use them. Preserve model IDs, prefixes, 768/512 dimensions, normalization, and retry behavior; validate embedding and image-pipeline tests. |
@@ -172,10 +176,10 @@ empty directories.
 | Group / files | Category | Decision / risk |
 | --- | --- | --- |
 | `tests/conftest.py` | Shared SQLite and FastAPI fixtures | Keep; changing the global dependency override risks every API test. |
-| `tests/architecture/test_domain_boundaries.py`, `tests/architecture/test_application_import_graph.py`, `tests/architecture/test_http_composition.py` | Architecture | Keep in `architecture/`; enforce pure domain imports, statically acyclic `app.*` dependencies, and no ORM query construction in the HTTP entry point. |
+| `tests/architecture/test_domain_boundaries.py`, `tests/architecture/test_application_import_graph.py`, `tests/architecture/test_http_composition.py`, `tests/architecture/test_ingestion_application_boundaries.py` | Architecture | Keep in `architecture/`; enforce pure domain imports, statically acyclic `app.*` dependencies, provider-independent ingestion use cases, and no ORM query construction in the HTTP entry point. |
 | `tests/integration/conftest.py`, `tests/integration/test_postgres_queries.py` | PostgreSQL/pgvector integration | Keep opt-in; requires guarded `POSTGRES_TEST_DATABASE_URL`, migrations, and pgvector. Not run without that isolated database. |
-| `test_domain_policies.py`, `test_search_evidence.py`, `test_text_processing.py`, `test_open_data_sources.py` | Domain policy, normalization, and source parsing | Keep; protect evidence, attribution, text, and external-data parsing rules. |
-| `test_application_use_cases.py`, `test_document_ingestion.py`, `test_document_search.py`, `test_osm_ingestion.py`, `test_coverage_audit.py` | Application/use-case and persistence mapping | Keep; protect ingestion, retrieval, update, and report behavior. |
+| `test_domain_policies.py`, `test_search_evidence.py`, `test_text_processing.py`, `test_open_data_sources.py`, `tests/unit/test_restaurant_discovery_query_intent.py` | Domain policy, normalization, and source parsing | Keep; protect evidence, attribution, query intent, text, and external-data parsing rules. |
+| `test_application_use_cases.py`, `test_document_ingestion.py`, `test_document_search.py`, `test_osm_ingestion.py`, `test_coverage_audit.py`, `tests/unit/test_ingestion_use_cases.py`, `tests/unit/test_ingestion_postgres_adapters.py` | Application/use-case and persistence mapping | Keep; protect provider-independent ingestion coordination, transactions, retrieval, update, and report behavior. |
 | `test_restaurant_search_inclusion.py`, `test_restaurant_search_tool.py`, `test_image_pipeline.py`, `test_restaurant_photo_workflow.py` | Restaurant/image context behavior | Keep; high-risk ranking, filter, evidence, attribution, and photo-association regressions. |
 | `test_rag.py`, `test_retrieval_tools.py`, `test_ingestion_compatibility.py` | Knowledge/Tool behavior and compatibility | Keep; protects answer/source contracts and legacy ingestion callers. |
 | `test_api.py`, `test_mcp_server.py`, `test_a2a_server.py`, `test_itinerary_planner_client.py`, `test_itinerary_planner_server.py`, `test_itinerary_planner_agent_client.py` | HTTP, MCP, and A2A contracts | Keep at documented paths; preserve wire schemas, artifact names, and error handling. |
