@@ -5,8 +5,8 @@ from typing import cast
 
 import pytest
 
-import evaluate_restaurant_search
-from evaluate_restaurant_search import (
+from scripts.evaluation import evaluate_restaurant_search
+from scripts.evaluation.evaluate_restaurant_search import (
     RestaurantEvaluationCase,
     _matches_expected,
     load_cases,

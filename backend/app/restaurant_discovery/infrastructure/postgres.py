@@ -8,7 +8,7 @@ from app.infrastructure.persistence.postgres.image_queries import (
 from app.infrastructure.persistence.postgres.restaurant_queries import (
     search_osm_places_by_text,
 )
-from app.observability import traced_span
+from app.infrastructure.observability import traced_span
 from app.restaurant_discovery.application.contracts import (
     ImageSearchResult,
     OsmRestaurantSearchResponse,

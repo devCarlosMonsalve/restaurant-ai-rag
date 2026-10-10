@@ -3,8 +3,8 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.embeddings import embed_document_chunks
-from app.image_embeddings import embed_image
+from app.infrastructure.embeddings.text import embed_document_chunks
+from app.infrastructure.embeddings.image import embed_image
 from app.infrastructure.filesystem.text_documents import ingest_txt
 from app.infrastructure.persistence.postgres.ingestion import (
     PostgresDocumentChunkStore,
@@ -15,7 +15,7 @@ from app.ingestion.application.documents_usecase import ingest_text_document
 from app.ingestion.application.images_usecase import ingest_image
 from app.ingestion.application.ports import ImageSourceMetadata
 from app.models.osm_place import OsmPlace
-from app.open_data_sources import OSMRestaurant
+from app.infrastructure.external_data.open_data_sources import OSMRestaurant
 
 
 def ingest_txt_to_database(

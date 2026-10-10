@@ -3,12 +3,12 @@ import asyncio
 import httpx
 import pytest
 
-from app import a2a_server
+from app.interfaces.a2a import restaurant_discovery_server as a2a_server
 from app.agents.schemas import (
     RestaurantSearchAgentCandidate,
     RestaurantSearchAgentResponse,
 )
-from app.itinerary_planner import ItineraryDiningDraft, plan_itinerary_dining
+from app.itinerary_planning.application.planner import ItineraryDiningDraft, plan_itinerary_dining
 
 
 def make_candidate(name: str, osm_id: int) -> RestaurantSearchAgentCandidate:

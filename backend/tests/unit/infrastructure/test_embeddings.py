@@ -4,7 +4,7 @@ import pytest
 from google.genai.errors import ServerError
 from pydantic import SecretStr
 
-from app import embeddings
+from app.infrastructure.embeddings import text as embeddings
 from app.core.config import settings
 
 

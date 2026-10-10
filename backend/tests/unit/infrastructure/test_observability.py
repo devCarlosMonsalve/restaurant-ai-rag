@@ -13,11 +13,11 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
-from app import observability
+from app.infrastructure import observability
 from app.agents import restaurant_search_agent
 from app.agents.schemas import RestaurantSearchAgentResponse
 from app.core.config import settings
-from app.knowledge.application import answer_question
+from app.tools import document_answer
 from app.knowledge.infrastructure.generation import answer_chain
 from app.knowledge.infrastructure.postgres import retriever
 from app.schemas import RagQuestionRequest
@@ -183,10 +183,10 @@ def test_synthetic_rag_trace_is_hierarchical_and_excludes_content(
     monkeypatch.setenv("LANGCHAIN_TRACING_V2", "true")
 
     try:
-        response = answer_question.answer_from_documents(
-            RagQuestionRequest(query=question, top_k=3),
-            retriever.PostgresDocumentRetriever(cast(Session, FakeSession())),
-            answer_chain.generate_grounded_answer,
+        response = document_answer.answer_from_documents(
+            question,
+            cast(Session, FakeSession()),
+            top_k=3,
         )
         spans = exporter.get_finished_spans()
     finally:

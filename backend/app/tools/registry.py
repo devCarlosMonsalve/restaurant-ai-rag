@@ -6,8 +6,8 @@ from google.genai import types
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
-from app.image_presentation import image_file_url
-from app.observability import traced_span
+from app.presentation.image_urls import image_file_url
+from app.infrastructure.observability import traced_span
 from app.knowledge.application.contracts import (
     DocumentSearchRequest,
     RagQuestionRequest,

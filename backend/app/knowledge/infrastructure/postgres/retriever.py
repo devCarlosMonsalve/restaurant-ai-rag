@@ -1,10 +1,10 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.embeddings import embed_search_query
+from app.infrastructure.embeddings.text import embed_search_query
 from app.knowledge.application.ports import DocumentRetriever
 from app.models.document_chunk import DocumentChunk
-from app.observability import traced_span
+from app.infrastructure.observability import traced_span
 from app.knowledge.application.contracts import DocumentSearchResult
 
 

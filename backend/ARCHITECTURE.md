@@ -44,6 +44,84 @@ Use DDD only where code demonstrates a domain rule:
   itinerary flow does not currently implement enough feasibility rules to
   justify an itinerary aggregate.
 
+## Naming and module placement
+
+These conventions apply to new modules and to files that must change for a
+functional reason. They are not a mandate to rename stable modules solely for
+style.
+
+### Names
+
+- Use `snake_case` for Python module and test filenames. Name types and
+  functions with the terms used by their bounded context, not infrastructure
+  jargon leaking into the domain.
+- Prefer a concrete responsibility over a generic category. Use action names
+  for use cases (`search_documents.py`, `answer_question.py`); name ports for
+  the capability the use case needs (`DocumentRetriever`,
+  `GroundedAnswerGenerator`); name adapters for their role and, when useful,
+  their technology (`PostgresDocumentRetriever`).
+- Use `Request`, `Response`, or `DTO` in transport/application contract type
+  names when that distinction helps callers. Keep transport contracts distinct
+  from domain concepts and SQLAlchemy records. ORM records belong under
+  `app.models`; a same-named domain concept should live in its context's
+  `domain/` package. Add a `Record` suffix only when package context does not
+  make an actual name collision clear.
+- Do not add `_service`, `_manager`, `_handler`, or `_repository` as automatic
+  suffixes. Use a pattern suffix only when the code actually implements that
+  pattern and the suffix clarifies responsibility.
+- Avoid unscoped names such as `manager.py`, `helper.py`, `common.py`, or
+  `utils.py`. A conventional or idiomatic exception is acceptable when its
+  package bounds the responsibility (`ports.py` for a small cohesive set of
+  ports, or SQLAlchemy's `models/base.py` for its declarative `Base`). Split a
+  growing generic file by capability instead of accumulating unrelated code.
+
+### Placement and dependency direction
+
+- Start with the bounded context, then choose the narrowest layer that owns
+  the responsibility. Do not create empty `domain/`, `application/`, or
+  `infrastructure/` packages just to make contexts look uniform.
+- Keep domain rules independent of FastAPI, SQLAlchemy, LLM providers, and
+  external protocols. Application use cases coordinate domain behavior and
+  declare the ports they need. Infrastructure implements those ports.
+  Interfaces translate HTTP, MCP, A2A, CLI, or other input/output contracts;
+  they do not become alternate homes for domain rules.
+- Put technology-specific code under infrastructure or the appropriate
+  interface. Avoid adding global `common` or `shared` packages unless a real
+  cross-context capability is demonstrated.
+- Before adding, moving, splitting, renaming, or deleting a file, inspect its
+  responsibility and equivalents, search imports and runtime entry points,
+  check public contracts, and identify affected tests, scripts, configuration,
+  and documentation. Update callers together; keep a compatibility re-export
+  only when actual consumers or a documented entry point justify it.
+- Preserve HTTP, Tools, MCP, and A2A contracts, Alembic history and database
+  schema, and protected retrieval behavior during organizational changes.
+
+### Verified examples and proposed naming
+
+The following are existing examples in this repository, not newly proposed
+files:
+
+- `app.knowledge.application.search_documents` and
+  `app.knowledge.application.answer_question` express actions in Knowledge.
+- `DocumentRetriever` and `GroundedAnswerGenerator` in
+  `app.knowledge.application.ports` describe application capabilities;
+  `PostgresDocumentRetriever` in
+  `app.knowledge.infrastructure.postgres.retriever` implements retrieval.
+- `FeatureRequirement` and `SearchEvidenceRequest` in
+  `app.restaurant_discovery.domain.evidence` are domain concepts, while
+  `app.models.osm_place.OsmPlace` is a SQLAlchemy record, not a domain entity.
+- `DocumentSearchRequest`, `OsmRestaurantSearchResponse`, and the A2A/MCP
+  schemas distinguish transport contracts; tests use the `test_` prefix and
+  name the behavior they cover.
+- `app.restaurant_discovery.application.service` and
+  `app.models.base` are existing scoped/idiomatic exceptions to avoiding
+  generic filenames. Do not mechanically rename them; use more specific names
+  for new files when that improves discoverability.
+
+For future files, `search_restaurants.py` is a proposed action-oriented module
+name when it owns that use case; it does not imply that another implementation
+should be added if the behavior already exists.
+
 The tests under `tests/architecture/` protect the dependency-free domains in
 Restaurant Discovery, Knowledge, and the remaining shared domain package,
 statically check the `app.*` import graph for cycles, and prevent `main.py`
@@ -56,31 +134,38 @@ dynamic imports.
 backend/
 ├── app/
 │   ├── agents/                         # model/tool orchestration
-│   ├── application/                    # shared cross-context application flows and legacy exports
-│   ├── core/                           # settings
-│   ├── domain/                         # remaining shared OSM indexing policy and legacy exports
-│   ├── restaurant_discovery/           # restaurant discovery bounded context
-│   │   ├── application/                # contracts, use cases, and repository port
-│   │   ├── domain/                     # evidence, query intent, and photo policies
-│   │   └── infrastructure/postgres.py  # context PostgreSQL adapter
+│   ├── application/                    # cross-context application services and DTOs
+│   ├── core/                           # environment configuration
 │   ├── infrastructure/
+│   │   ├── embeddings/                 # Gemini and OpenCLIP adapters
+│   │   ├── external_data/              # Overpass and Wikimedia Commons clients
 │   │   ├── filesystem/                 # document file adapter
-│   │   └── persistence/postgres/       # catalog, ingestion, pgvector, and search adapters
-│   ├── ingestion/
-│   │   ├── application/                # ports and provider-independent use cases
-│   │   └── composition.py              # concrete provider and persistence wiring
-│   ├── knowledge/
-│   │   ├── application/                # contracts, retrieval and answer use cases
-│   │   ├── domain/                     # text preparation
-│   │   └── infrastructure/             # PostgreSQL and generation adapters
+│   │   ├── llm/                        # shared model routing
+│   │   ├── persistence/postgres/       # sessions, ORM queries, and persistence adapters
+│   │   └── observability.py            # OpenTelemetry/Phoenix helpers
+│   ├── ingestion/                      # ingestion use cases and composition
+│   ├── interfaces/
+│   │   ├── a2a/                        # A2A servers and protocol clients
+│   │   ├── http/                       # HTTP schema aggregation
+│   │   └── mcp/                        # MCP server and public tool schemas
+│   ├── itinerary_planning/             # itinerary application service and A2A client
+│   ├── knowledge/                      # Knowledge/RAG context
 │   ├── models/                         # SQLAlchemy ORM records
+│   ├── presentation/                   # shared response presentation helpers
+│   ├── restaurant_discovery/           # restaurant discovery bounded context
 │   ├── tools/                          # model-facing Tool adapters/registry
-│   ├── workflows/                     # LangGraph workflow adapters
-│   └── *.py                            # compatibility, provider, and entry modules
+│   ├── workflows/                      # LangGraph workflow adapters
+│   ├── main.py                         # stable FastAPI ASGI composition entry point
+│   └── schemas.py                      # legacy schema re-exports
 ├── alembic/                            # migration history; unchanged
 ├── data/                               # corpus and evaluation fixtures
-├── evaluation/                          # shared offline evaluation utilities
-├── scripts/                             # operational diagnostics
+├── evaluation/                         # shared offline evaluation utilities
+├── scripts/
+│   ├── a2a/                            # A2A client commands
+│   ├── diagnostics/                    # operational diagnostics
+│   ├── evaluation/                     # offline evaluator commands
+│   ├── ingestion/                      # data import commands
+│   └── maintenance/                    # audit/report commands
 ├── static/                             # backend-served static page
 ├── tests/
 │   ├── architecture/                   # architectural boundary checks
@@ -88,15 +173,16 @@ backend/
 │   ├── evaluation/                     # evaluator and dataset tests
 │   ├── integration/                    # opt-in PostgreSQL/pgvector tests
 │   └── unit/                           # domain, application, context, and adapter tests
-├── *.py                                # documented CLI entrypoints retained for compatibility
 ├── alembic.ini, pytest.ini             # tool-discovered configuration
 └── requirements*.txt, README.md        # environment and operations documentation
 ```
 
-This is an incremental structure, not a claim that every root-level module has
-already moved into its final context. In particular, the original import paths
-remain where they are compatibility entry points or are shared across
-contexts.
+Only stable composition/configuration entry points remain at package roots.
+Operational commands are grouped by purpose under `scripts/`; cross-cutting
+technical adapters live under `app/infrastructure/`; external protocols live
+under `app/interfaces/`. `app.schemas` is retained only as a compatibility
+re-export while the canonical public schema aggregation lives in
+`app.interfaces.http.schemas`.
 
 The three basic catalog endpoints use the `RestaurantCatalog` application
 port. `main.py` constructs `PostgresRestaurantCatalog` through a FastAPI
@@ -108,16 +194,20 @@ business invariant currently exists.
 | Package files | Responsibility / decision |
 | --- | --- |
 | `app/domain/__init__.py`, `app/domain/osm_place.py` | Keep `osm_place.py` as the pure OSM embedding invalidation policy. `domain/restaurant_discovery/*` and `app/application/{ports.py,restaurant_discovery.py}` are compatibility re-exports to the canonical context modules. |
-| `app/application/{__init__.py,document_answer.py,restaurant_catalog.py}` | Keep shared application flows that coordinate more than one bounded context and the restaurant catalog operations; they contain no ORM queries. |
-| `app/restaurant_discovery/{__init__.py,domain/{__init__.py,evidence.py,photo_association.py,query_intent.py},application/{__init__.py,contracts.py,ports.py,service.py},infrastructure/{__init__.py,postgres.py}}` | Canonical Restaurant Discovery context: pure feature/evidence and identity rules, context-owned request/response contracts, application orchestration behind a repository port, and a PostgreSQL adapter. Validate use cases, Tools, Agent, workflow, query, and API regressions. |
-| `app/infrastructure/{__init__.py,filesystem/__init__.py,filesystem/text_documents.py}` | Keep; filesystem reading and text-file normalization are adapters, not HTTP/application code. |
-| `app/infrastructure/persistence/{__init__.py,postgres/__init__.py,postgres/evidence_queries.py,postgres/restaurant_queries.py,postgres/image_queries.py,postgres/restaurant_catalog.py,postgres/ingestion.py}` | Keep; shared PostgreSQL/pgvector query builders, catalog mapping, and ingestion persistence/transaction ownership belong here. The former discovery adapter path is a compatibility re-export. Validate via focused query/API and ingestion tests plus the optional PostgreSQL integration suite. |
+| `app/application/{__init__.py,document_answer.py,restaurant_catalog.py}` | Keep cross-context answer composition and catalog application contracts/use cases; ORM access remains in PostgreSQL adapters. |
+| `app/restaurant_discovery/{domain/{evidence.py,osm_features.py,photo_association.py,query_intent.py},application/{contracts.py,coverage_audit.py,ports.py,service.py},infrastructure/postgres.py}` | Canonical Restaurant Discovery context: pure evidence, OSM feature labels, and identity rules; application orchestration and coverage reporting; and a PostgreSQL adapter. Validate use cases, ingestion, Tools, Agent, workflow, query, and API regressions. |
+| `app/infrastructure/{embeddings,external_data,filesystem,llm,persistence/postgres,observability.py}` | Keep technical providers and adapters out of the `app/` package root. SQL/pgvector retrieval and query semantics are unchanged; validate adapter and embedding tests plus the opt-in PostgreSQL suite. |
 | `app/knowledge/{__init__.py,domain/__init__.py,domain/text.py,application/__init__.py,application/contracts.py,application/ports.py,application/answer_question.py,application/search_documents.py,infrastructure/__init__.py,infrastructure/postgres/__init__.py,infrastructure/postgres/retriever.py,infrastructure/generation/__init__.py,infrastructure/generation/answer_chain.py}` | Keep the context-first structure; it owns document-search/RAG contracts and separates text policy, retrieval/answer use cases, database retrieval, and Gemini/LangChain generation. Validate with RAG/retrieval tests using mocks. |
 | `app/ingestion/{__init__.py,composition.py,application/{__init__.py,ports.py,documents_usecase.py,images_usecase.py}}` | Keep; application use cases depend on ports, while composition wires filesystem/embedding providers and PostgreSQL adapters. `application/{documents.py,images.py,osm.py}` remain thin temporary compatibility facades. Validate with use-case, transaction, ingestion, and compatibility tests. |
 | `app/models/{__init__.py,base.py,restaurant.py,osm_place.py,image_embedding.py,document_chunk.py}` | Keep as ORM persistence records. `alembic/env.py` imports `app.models` so all tables remain registered. Validate metadata imports and Alembic history. |
 | `app/agents/{__init__.py,schemas.py,restaurant_search_agent.py}` | Keep public Agent schemas unchanged. `restaurant_search_agent.py` remains the LangGraph/model/tool orchestration boundary and calls the Discovery context for policies and use cases; turn/tool limits and photo dispatch remain contract-sensitive graph concerns. |
 | `app/workflows/{__init__.py,schemas.py,restaurant_photo_search.py}` | Keep workflow DTOs and graph boundary. The photo workflow coordinates discovery and scoped image lookup; exact source-URL association remains a domain policy. Do not merge it into an aggregate. |
 | `app/tools/{__init__.py,registry.py,restaurant_search.py,restaurant_photos.py,document_search.py,document_answer.py}` | Keep the registry and thin adapters. MCP and the model Agent share names, input schemas, hidden arguments, result serialization, and stable error categories. |
+| `app/interfaces/{http,mcp,a2a}` | Group protocol-specific schemas, servers, and clients by delivery mechanism. Keep endpoint paths, MCP tool schemas, A2A agent cards, artifacts, and task behavior unchanged. |
+| `app/itinerary_planning/{application,infrastructure/a2a}` | Keep the deterministic itinerary-draft use case separate from the A2A client adapter. It remains a small application capability, not an artificial domain aggregate. |
+| `app/presentation/image_urls.py` | Keep safe local-image URL mapping out of the package root; preserve the existing response URL format. |
+| `app/main.py` | Keep the stable ASGI entry point and explicit FastAPI composition. Launch remains `uvicorn app.main:app`; no public route or response contract changes. |
+| `app/schemas.py` | Keep temporarily as a compatibility re-export; canonical aggregation is in `app/interfaces/http/schemas.py`, while application DTO definitions live with their application services. |
 
 Ingestion document/image use cases depend on typed application ports, while
 the composition module wires filesystem/embedding providers and PostgreSQL
@@ -164,10 +254,8 @@ mapping. No schema, table, or migration changed.
 | `pytest.ini` | Keep in `backend/`; constrain discovery to `tests` and exclude integration tests by default. | Keeps pytest focused on categorized test modules and prevents accidental PostgreSQL integration runs. Explicit `-m integration` remains available. |
 | `requirements.txt`, `requirements-dev.txt` | Keep | Deployment/environment tooling expects these paths. Pylance import analysis found no unresolved top-level imports. |
 | `README.md` | Keep | Backend operational commands and protocol/evaluation documentation. Update when a documented path changes. |
-| `audit_restaurant_coverage.py`, `evaluate_image_search.py`, `evaluate_rag.py`, `evaluate_restaurant_search.py` | Keep as root CLI/evaluation entry points. | Their direct commands are documented and convenient; keep executable entrypoints stable. Validate `--help` and fixture-only tests; do not run live benchmarks. |
-| `evaluation/utils.py` | Move shared evaluation fingerprint/report helpers out of the backend root. | It is an importable library, not a CLI or tool-discovered configuration. Evaluator entrypoints import it as `evaluation.utils`; validate utility tests and each CLI `--help`. |
-| `ingest_document.py`, `ingest_images.py`, `ingest_madrid_commons_images.py`, `ingest_osm_place_embeddings.py` | Keep as root CLI entry points. | Existing operations and README commands depend on these paths. Validate `--help` and mocked/unit coverage; do not run network, model, or database ingestion. |
-| `scripts/diagnostics/check_database_connection.py` | Move the former `test_connection.py` into operational diagnostics and guard execution with `main()`. | It is a manual DB diagnostic, not a pytest test; run only via `python -m scripts.diagnostics.check_database_connection` against an explicitly configured database. |
+| `scripts/{evaluation,ingestion,maintenance,a2a,diagnostics}/` | Group executable commands by purpose; invoke them with `python -m scripts.<group>.<command>`. | Direct file commands were replaced and README selectors updated. Validate `--help`; do not run benchmarks, network/model ingestion, or database operations as architectural checks. |
+| `evaluation/utils.py` | Keep shared offline evaluation fingerprint/report helpers outside the CLI package. | Evaluators import it as `evaluation.utils`; validate utility tests and evaluator `--help`. |
 | `data/samples/menu.txt` | Move the sample document into data. | A sample corpus file is data, not backend application configuration. Its contents are unchanged; no code or docs depended on the old root path. |
 | `static/index.html` | Keep under `static/`. | Runtime asset served by FastAPI; validate the corresponding API/static behavior if changed. |
 | `data/evaluation/`, `data/image_evaluation/`, `data/restaurant_evaluation/`, and `data/images/` | Keep as corpus/evaluation assets. | Evaluators and persisted image paths rely on these locations; no corpus or benchmark was changed or run. |

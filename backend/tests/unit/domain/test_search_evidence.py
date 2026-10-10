@@ -5,7 +5,7 @@ from app.restaurant_discovery.domain.evidence import (
     detect_search_evidence,
     matches_feature_requirements,
 )
-from app.restaurant_search import search_osm_places_by_text
+from app.infrastructure.persistence.postgres.restaurant_queries import search_osm_places_by_text
 
 
 def test_search_evidence_detects_specific_features_and_unverified_details() -> None:

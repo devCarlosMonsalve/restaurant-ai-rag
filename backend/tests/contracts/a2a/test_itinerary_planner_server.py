@@ -10,7 +10,11 @@ from a2a.helpers import new_data_message
 from a2a.types import AgentCard, Role, SendMessageRequest, Task, TaskState
 from google.protobuf.json_format import MessageToDict
 
-from app import a2a_server, itinerary_planner, itinerary_planner_server
+from app.interfaces.a2a import (
+    itinerary_planner_server,
+    restaurant_discovery_server as a2a_server,
+)
+from app.itinerary_planning.application import planner as itinerary_planner
 from app.agents.schemas import (
     RestaurantSearchAgentCandidate,
     RestaurantSearchAgentResponse,

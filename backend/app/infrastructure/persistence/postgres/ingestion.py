@@ -13,7 +13,7 @@ from app.ingestion.application.ports import (
 from app.models.document_chunk import DocumentChunk
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
-from app.open_data_sources import OSMRestaurant
+from app.infrastructure.external_data.open_data_sources import OSMRestaurant
 
 
 class PostgresDocumentChunkStore:

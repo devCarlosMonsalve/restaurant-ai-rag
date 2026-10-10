@@ -9,6 +9,7 @@ from app.knowledge.infrastructure.generation.answer_chain import (
 from app.knowledge.infrastructure.postgres.retriever import (
     PostgresDocumentRetriever,
 )
+from app.infrastructure.observability import traced_span
 from app.knowledge.application.contracts import RagAnswerResponse, RagQuestionRequest
 
 
@@ -42,8 +43,18 @@ def answer_from_documents(
         A generated answer and the source chunks used by the RAG service.
     """
     request = RagQuestionRequest(query=query, top_k=top_k)
-    return answer_from_documents_use_case(
-        request,
-        PostgresDocumentRetriever(session),
-        generate_grounded_answer,
-    )
+    with traced_span(
+        "rag.answer_from_documents",
+        {"retrieval.top_k": request.top_k},
+    ) as span:
+        response = answer_from_documents_use_case(
+            request,
+            PostgresDocumentRetriever(session),
+            generate_grounded_answer,
+        )
+        span.set_attribute("rag.retrieved_chunk_count", len(response.sources))
+        if not response.sources:
+            span.set_attribute("rag.result", "no_documents")
+        else:
+            span.set_attribute("rag.source_count", len(response.sources))
+        return response

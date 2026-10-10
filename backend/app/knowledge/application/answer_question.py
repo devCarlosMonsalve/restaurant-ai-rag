@@ -4,7 +4,6 @@ from app.knowledge.application.ports import (
     DocumentRetriever,
     GroundedAnswerGenerator,
 )
-from app.observability import traced_span
 from app.knowledge.application.contracts import (
     DocumentSearchResult,
     RagAnswerResponse,
@@ -27,32 +26,25 @@ def answer_from_documents(
     retriever: DocumentRetriever,
     generate_answer: GroundedAnswerGenerator,
 ) -> RagAnswerResponse:
-    with traced_span(
-        "rag.answer_from_documents",
-        {"retrieval.top_k": request.top_k},
-    ) as span:
-        chunks = retriever.search_documents(
-            request.query,
-            top_k=request.top_k,
-        )
-        span.set_attribute("rag.retrieved_chunk_count", len(chunks))
-        if not chunks:
-            span.set_attribute("rag.result", "no_documents")
-            return RagAnswerResponse(answer=NO_DOCUMENTS_ANSWER, sources=[])
+    chunks = retriever.search_documents(
+        request.query,
+        top_k=request.top_k,
+    )
+    if not chunks:
+        return RagAnswerResponse(answer=NO_DOCUMENTS_ANSWER, sources=[])
 
-        answer = generate_answer(
-            request.query,
-            build_retrieved_context(chunks),
-            context_chunk_count=len(chunks),
+    answer = generate_answer(
+        request.query,
+        build_retrieved_context(chunks),
+        context_chunk_count=len(chunks),
+    )
+    sources = [
+        RagSource(
+            document_id=chunk.document_id,
+            source_name=chunk.source_name,
+            chunk_index=chunk.chunk_index,
+            similarity=chunk.similarity,
         )
-        sources = [
-            RagSource(
-                document_id=chunk.document_id,
-                source_name=chunk.source_name,
-                chunk_index=chunk.chunk_index,
-                similarity=chunk.similarity,
-            )
-            for chunk in chunks
-        ]
-        span.set_attribute("rag.source_count", len(sources))
-        return RagAnswerResponse(answer=answer, sources=sources)
+        for chunk in chunks
+    ]
+    return RagAnswerResponse(answer=answer, sources=sources)

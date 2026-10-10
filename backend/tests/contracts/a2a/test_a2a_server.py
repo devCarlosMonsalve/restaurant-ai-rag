@@ -13,14 +13,14 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 
-from app import a2a_server
+from app.interfaces.a2a import restaurant_discovery_server as a2a_server
 from app.agents.restaurant_search_agent import RestaurantSearchAgentError
 from app.agents.schemas import (
     RestaurantSearchAgentCandidate,
     RestaurantSearchAgentPhoto,
     RestaurantSearchAgentResponse,
 )
-from app import observability
+from app.infrastructure import observability
 
 
 def send_a2a_message(query: str) -> tuple[AgentCard, Task]:

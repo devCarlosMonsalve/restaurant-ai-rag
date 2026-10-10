@@ -22,7 +22,7 @@ from app.restaurant_discovery.application.service import (
     search_restaurant_photos as search_restaurant_photos_use_case,
     search_restaurants as search_restaurants_use_case,
 )
-from app.database import get_db
+from app.infrastructure.persistence.postgres.database import get_db
 from app.application.restaurant_catalog import (
     RestaurantCatalog,
     create_restaurant as create_restaurant_use_case,
@@ -54,11 +54,11 @@ from app.restaurant_discovery.application.contracts import (
     OsmRestaurantSearchRequest,
     OsmRestaurantSearchResponse,
 )
-from app.observability import (
+from app.infrastructure.observability import (
     configure_phoenix_tracing,
     shutdown_phoenix_tracing,
 )
-from app.schemas import (
+from app.interfaces.http.schemas import (
     OsmPlaceRead,
     RagAnswerWithPhotosResponse,
     RagQuestionWithPhotosRequest,

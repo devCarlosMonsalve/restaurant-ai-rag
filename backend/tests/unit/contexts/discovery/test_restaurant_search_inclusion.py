@@ -4,10 +4,10 @@ import pytest
 from sqlalchemy import event, literal
 from sqlalchemy.orm import Session
 
-from app.image_embeddings import IMAGE_EMBEDDING_DIMENSIONS
+from app.infrastructure.embeddings.image import IMAGE_EMBEDDING_DIMENSIONS
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
-from app.restaurant_search import search_osm_places_by_text
+from app.infrastructure.persistence.postgres.restaurant_queries import search_osm_places_by_text
 
 
 def test_photo_workflow_option_includes_indexed_places_without_changing_defaults(

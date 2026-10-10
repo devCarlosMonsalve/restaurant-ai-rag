@@ -3,7 +3,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from app.open_data_sources import (
+from app.infrastructure.external_data.open_data_sources import (
     fetch_commons_photos,
     fetch_madrid_restaurants,
     parse_commons_photos,
@@ -123,7 +123,7 @@ def test_commons_category_reference_is_sent_to_category_api(
 ) -> None:
     requested_urls = []
     monkeypatch.setattr(
-        "app.open_data_sources._request_json",
+        "app.infrastructure.external_data.open_data_sources._request_json",
         lambda url, data=None: requested_urls.append(url) or {"query": {"pages": {}}},
     )
 
@@ -150,7 +150,7 @@ def test_madrid_restaurant_fetch_includes_places_without_commons(
         request_data["query"] = parse_qs(data.decode("utf-8"))["data"][0]
         return {"elements": []}
 
-    monkeypatch.setattr("app.open_data_sources._request_json", fake_request_json)
+    monkeypatch.setattr("app.infrastructure.external_data.open_data_sources._request_json", fake_request_json)
 
     assert fetch_madrid_restaurants() == []
     assert 'nwr["amenity"="restaurant"](area.city);' in request_data["query"]
@@ -170,8 +170,8 @@ def test_madrid_restaurant_fetch_retries_transient_overpass_errors(
             raise HTTPError(url, 504, "Gateway Timeout", None, None)
         return {"elements": []}
 
-    monkeypatch.setattr("app.open_data_sources._request_json", flaky_request_json)
-    monkeypatch.setattr("app.open_data_sources.time.sleep", lambda _: None)
+    monkeypatch.setattr("app.infrastructure.external_data.open_data_sources._request_json", flaky_request_json)
+    monkeypatch.setattr("app.infrastructure.external_data.open_data_sources.time.sleep", lambda _: None)
 
     assert fetch_madrid_restaurants() == []
     assert attempts == 2

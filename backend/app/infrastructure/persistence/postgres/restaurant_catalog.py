@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.models.restaurant import Restaurant
-from app.schemas import OsmPlaceRead, RestaurantCreate, RestaurantRead
+from app.application.restaurant_catalog import (
+    OsmPlaceRead,
+    RestaurantCreate,
+    RestaurantRead,
+)
 
 
 OSM_ATTRIBUTION = "© OpenStreetMap contributors"

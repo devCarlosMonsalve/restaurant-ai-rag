@@ -11,7 +11,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 
-from app import mcp_server, observability
+from app.infrastructure import observability
+from app.interfaces.mcp import server as mcp_server
 from app.schemas import (
     DocumentSearchResult,
     ImageSearchResult,

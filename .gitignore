@@ -14,7 +14,6 @@ env/
 !.env.example
 
 # Local course materials
-/AGENTS.md
 docs/
 
 # IDE

@@ -1,6 +1,6 @@
 from sqlalchemy import text
 
-from app.database import engine
+from app.infrastructure.persistence.postgres.database import engine
 
 
 def main() -> None:

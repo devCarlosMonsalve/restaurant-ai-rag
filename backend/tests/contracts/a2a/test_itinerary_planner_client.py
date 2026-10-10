@@ -3,14 +3,14 @@ import asyncio
 import httpx
 import pytest
 
-from app import a2a_server
+from app.interfaces.a2a import restaurant_discovery_server as a2a_server
 from app.agents.restaurant_search_agent import RestaurantSearchAgentError
 from app.agents.schemas import (
     RestaurantSearchAgentCandidate,
     RestaurantSearchAgentPhoto,
     RestaurantSearchAgentResponse,
 )
-from app.itinerary_planner_client import (
+from app.itinerary_planning.infrastructure.a2a.restaurant_discovery_client import (
     RestaurantDiscoveryDelegationError,
     delegate_restaurant_discovery,
 )

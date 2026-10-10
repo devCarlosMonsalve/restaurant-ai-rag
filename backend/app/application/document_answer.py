@@ -1,18 +1,45 @@
+from pydantic import BaseModel, Field
+
 from app.restaurant_discovery.application.ports import RestaurantDiscoveryPort
 from app.restaurant_discovery.application.service import search_restaurant_photos
-from app.image_presentation import image_file_url
+from app.presentation.image_urls import image_file_url
 from app.knowledge.application.answer_question import answer_from_documents
 from app.knowledge.application.ports import (
     DocumentRetriever,
     GroundedAnswerGenerator,
 )
-from app.observability import traced_span
+from app.infrastructure.observability import traced_span
 from app.restaurant_discovery.application.contracts import ImageSearchRequest
-from app.schemas import (
-    RagAnswerWithPhotosResponse,
-    RagPhoto,
-    RagQuestionWithPhotosRequest,
+from app.knowledge.application.contracts import (
+    RagAnswerResponse,
+    RagQuestionRequest,
 )
+
+
+class RagQuestionWithPhotosRequest(RagQuestionRequest):
+    include_photos: bool = False
+
+
+class RagPhoto(BaseModel):
+    source_name: str
+    image_url: str
+    similarity: float
+    metadata_match_count: int = 0
+    source_url: str | None = None
+    license_name: str | None = None
+    license_url: str | None = None
+    attribution: str | None = None
+    restaurant_name: str | None = None
+    restaurant_location: str | None = None
+    restaurant_cuisine: str | None = None
+    restaurant_features: list[str] = Field(default_factory=list)
+    restaurant_source_url: str | None = None
+    restaurant_attribution: str | None = None
+    restaurant_attribution_url: str | None = None
+
+
+class RagAnswerWithPhotosResponse(RagAnswerResponse):
+    photos: list[RagPhoto] = Field(default_factory=list)
 
 
 def answer_from_documents_with_photos(
@@ -28,11 +55,23 @@ def answer_from_documents_with_photos(
             "photos.enabled": request.include_photos,
         },
     ) as span:
-        answer = answer_from_documents(
-            request,
-            retriever,
-            generate_answer,
-        )
+        with traced_span(
+            "rag.answer_from_documents",
+            {"retrieval.top_k": request.top_k},
+        ) as rag_span:
+            answer = answer_from_documents(
+                request,
+                retriever,
+                generate_answer,
+            )
+            rag_span.set_attribute(
+                "rag.retrieved_chunk_count",
+                len(answer.sources),
+            )
+            if not answer.sources:
+                rag_span.set_attribute("rag.result", "no_documents")
+            else:
+                rag_span.set_attribute("rag.source_count", len(answer.sources))
         photos = []
         if request.include_photos:
             image_results = search_restaurant_photos(

@@ -12,7 +12,7 @@ os.environ.setdefault(
     "postgresql+psycopg://test:test@localhost/test",
 )
 
-from app.database import get_db
+from app.infrastructure.persistence.postgres.database import get_db
 from app.main import app
 from app.models.base import Base
 

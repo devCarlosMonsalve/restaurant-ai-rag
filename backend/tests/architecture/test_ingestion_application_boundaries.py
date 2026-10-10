@@ -27,9 +27,9 @@ def test_ingestion_use_cases_depend_only_on_standard_library_and_ports() -> None
         "sqlalchemy",
         "app.infrastructure",
         "app.models",
-        "app.embeddings",
-        "app.image_embeddings",
-        "app.open_data_sources",
+        "app.infrastructure.embeddings.text",
+        "app.infrastructure.embeddings.image",
+        "app.infrastructure.external_data.open_data_sources",
     )
 
     for filename in use_case_files:

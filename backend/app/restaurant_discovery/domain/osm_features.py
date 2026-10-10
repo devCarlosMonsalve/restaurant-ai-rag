@@ -1,0 +1,16 @@
+OSM_FEATURE_TAGS = {
+    "outdoor_seating": "Mesas al aire libre",
+    "diet:vegetarian": "Opciones vegetarianas",
+    "diet:vegan": "Opciones veganas",
+    "diet:gluten_free": "Opciones sin gluten",
+    "diet:lactose_free": "Opciones sin lactosa",
+    "diet:halal": "Comida halal",
+    "diet:kosher": "Comida kosher",
+    "wheelchair": "Acceso en silla de ruedas",
+    "air_conditioning": "Aire acondicionado",
+    "live_music": "Música en vivo",
+    "internet_access": "Acceso a internet",
+    "takeaway": "Comida para llevar",
+    "delivery": "Reparto a domicilio",
+    "reservation": "Reservas",
+}

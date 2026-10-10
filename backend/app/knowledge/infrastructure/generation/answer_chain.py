@@ -6,7 +6,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 
 from app.core.config import settings
-from app.observability import (
+from app.infrastructure.observability import (
     disable_automatic_langchain_tracing,
     traced_span,
 )

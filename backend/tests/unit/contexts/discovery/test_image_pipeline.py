@@ -12,19 +12,19 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import operators, visitors
 from sqlalchemy.sql.elements import BinaryExpression
 
-from app.image_embeddings import (
+from app.infrastructure.embeddings.image import (
     IMAGE_EMBEDDING_DIMENSIONS,
     embed_image,
     embed_text_for_image_search,
 )
 from app.ingestion import ImageSourceMetadata, ingest_image_to_database
-from app.image_search import (
+from app.infrastructure.persistence.postgres.image_queries import (
     _metadata_match_count,
     _tokens,
     search_images_by_text,
 )
 from app.models.image_embedding import ImageEmbedding
-from app.open_data_sources import OSMRestaurant
+from app.infrastructure.external_data.open_data_sources import OSMRestaurant
 from app.ingestion import upsert_osm_place
 from app.schemas import ImageSearchResult
 
@@ -45,7 +45,7 @@ def test_clip_embeddings_are_normalized_for_images_and_text(
     Image.new("RGB", (16, 16), color="red").save(image_path)
     model = FakeClipModel()
     monkeypatch.setattr(
-        "app.image_embeddings._load_clip",
+        "app.infrastructure.embeddings.image._load_clip",
         lambda: (
             model,
             lambda image: torch.zeros((3, 224, 224)),

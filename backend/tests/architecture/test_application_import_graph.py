@@ -83,11 +83,11 @@ def test_context_applications_do_not_depend_on_infrastructure_or_global_schemas(
     modules = _app_modules()
     forbidden = (
         "sqlalchemy",
-        "app.database",
+        "app.infrastructure.persistence.postgres.database",
         "app.infrastructure",
         "app.models",
-        "app.embeddings",
-        "app.image_embeddings",
+        "app.infrastructure.embeddings.text",
+        "app.infrastructure.embeddings.image",
         "app.schemas",
     )
     context_applications = (

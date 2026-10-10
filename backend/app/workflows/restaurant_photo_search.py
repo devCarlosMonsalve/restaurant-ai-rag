@@ -9,11 +9,11 @@ from app.restaurant_discovery.application.service import (
     search_restaurants as search_restaurants_use_case,
     search_verified_candidate_photos,
 )
-from app.image_presentation import image_file_url
+from app.presentation.image_urls import image_file_url
 from app.restaurant_discovery.infrastructure.postgres import (
     PostgresRestaurantDiscoveryAdapter,
 )
-from app.observability import (
+from app.infrastructure.observability import (
     disable_automatic_langchain_tracing,
     traced_span,
 )

@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-import evaluate_rag
+from scripts.evaluation import evaluate_rag
 from app.schemas import DocumentSearchResult
 
 

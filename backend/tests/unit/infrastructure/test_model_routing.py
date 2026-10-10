@@ -7,8 +7,8 @@ from google.genai import types
 from litellm import Router
 from litellm.types.utils import ModelResponse
 
-import app.model_routing as model_routing
-from app.model_routing import (
+import app.infrastructure.llm.model_routing as model_routing
+from app.infrastructure.llm.model_routing import (
     ModelRouteError,
     RESTAURANT_SEARCH_LITELLM_MODEL,
     RESTAURANT_SEARCH_MODEL_ALIAS,

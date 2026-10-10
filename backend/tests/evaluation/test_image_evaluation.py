@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import evaluate_image_search
+from scripts.evaluation import evaluate_image_search
 from app.schemas import ImageSearchResult
 
 

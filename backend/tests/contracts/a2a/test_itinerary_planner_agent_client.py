@@ -3,12 +3,16 @@ import asyncio
 import httpx
 import pytest
 
-from app import a2a_server, itinerary_planner, itinerary_planner_server
+from app.interfaces.a2a import (
+    itinerary_planner_server,
+    restaurant_discovery_server as a2a_server,
+)
+from app.itinerary_planning.application import planner as itinerary_planner
 from app.agents.schemas import (
     RestaurantSearchAgentCandidate,
     RestaurantSearchAgentResponse,
 )
-from app.itinerary_planner_agent_client import (
+from app.interfaces.a2a.itinerary_planner_agent_client import (
     ItineraryPlannerDelegationError,
     delegate_itinerary_plan,
 )

@@ -11,7 +11,7 @@ image or a directory of `.jpg`, `.jpeg`, `.png`, and `.webp` files:
 
 ```powershell
 .\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe ingest_images.py .\data\images
+.\.venv\Scripts\python.exe -m scripts.ingestion.ingest_images .\data\images
 ```
 
 The first image ingestion downloads the OpenCLIP `ViT-B-32` pretrained weights
@@ -52,7 +52,7 @@ similar dishes and unrelated objects. After indexing the images, run the
 evaluator from this directory:
 
 ```powershell
-.\.venv\Scripts\python.exe evaluate_image_search.py --top-k 3
+.\.venv\Scripts\python.exe -m scripts.evaluation.evaluate_image_search --top-k 3
 ```
 
 It reports Hit@1 and Hit@3 (or the selected `--top-k`) overall and per language.
@@ -65,7 +65,7 @@ photos so its metrics remain specific to the illustration test corpus.
 To evaluate retrieval against the imported Madrid photos instead, run:
 
 ```powershell
-.\.venv\Scripts\python.exe evaluate_image_search.py --cases .\data\image_evaluation\madrid_cases.json --osm-places-only --top-k 3
+.\.venv\Scripts\python.exe -m scripts.evaluation.evaluate_image_search --cases .\data\image_evaluation\madrid_cases.json --osm-places-only --top-k 3
 ```
 
 This real-photo set contains 10 scored Spanish and English queries for
@@ -87,7 +87,7 @@ association for the three OSM places that exposed the cross-restaurant issue,
 run:
 
 ```powershell
-.\.venv\Scripts\python.exe evaluate_image_search.py --attribution --top-k 3 --report "$env:TEMP\restaurant-ai-photo-attribution.json"
+.\.venv\Scripts\python.exe -m scripts.evaluation.evaluate_image_search --attribution --top-k 3 --report "$env:TEMP\restaurant-ai-photo-attribution.json"
 ```
 
 This checks the exact OSM ID foreign key and `source_url` for every returned
@@ -111,7 +111,7 @@ Apply the latest migration and run the limited import:
 
 ```powershell
 .\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe ingest_madrid_commons_images.py --photos-per-place 2
+.\.venv\Scripts\python.exe -m scripts.ingestion.ingest_madrid_commons_images --photos-per-place 2
 ```
 
 By default the import fetches all named restaurants returned by the Madrid
@@ -129,7 +129,7 @@ embedding model:
 
 ```powershell
 .\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe ingest_osm_place_embeddings.py
+.\.venv\Scripts\python.exe -m scripts.ingestion.ingest_osm_place_embeddings
 ```
 
 The embedding importer is resumable: it indexes places whose metadata changed
@@ -220,8 +220,8 @@ lives in `app.restaurant_discovery.domain.photo_association`; and Unicode
 normalization and chunking live in `app.knowledge.domain.text`.
 
 PostgreSQL restaurant and image query implementations live under
-`app.infrastructure.persistence.postgres`; the original `app.restaurant_search`
-and `app.image_search` paths remain compatibility facades. The context-specific
+`app.infrastructure.persistence.postgres`; the original `app.infrastructure.persistence.postgres.restaurant_queries`
+and `app.infrastructure.persistence.postgres.image_queries` paths remain compatibility facades. The context-specific
 PostgreSQL adapter is in `app.restaurant_discovery.infrastructure.postgres`.
 Text and image ingestion use cases live in `app.ingestion.application`, with
 legacy imports retained in the old paths; OSM ingestion delegates through
@@ -339,7 +339,7 @@ features, and one dish-name case. Environment queries are reported for manual
 review because OSM does not provide reliable labels for atmosphere:
 
 ```powershell
-.\.venv\Scripts\python.exe evaluate_restaurant_search.py --top-k 5
+.\.venv\Scripts\python.exe -m scripts.evaluation.evaluate_restaurant_search --top-k 5
 ```
 
 The evaluator reports Hit@1, Hit@3, MRR@K, Precision@3, explicit city/cuisine
@@ -352,7 +352,7 @@ request.
 To save a machine-readable run record:
 
 ```powershell
-.\.venv\Scripts\python.exe evaluate_restaurant_search.py --top-k 5 --report "$env:TEMP\restaurant-ai-restaurants.json"
+.\.venv\Scripts\python.exe -m scripts.evaluation.evaluate_restaurant_search --top-k 5 --report "$env:TEMP\restaurant-ai-restaurants.json"
 ```
 
 ## Evaluate document retrieval and RAG answers
@@ -362,7 +362,7 @@ including one question requiring chunks from two documents, and reports
 Hit@K, source Recall@K, chunk Precision@K, and MRR@K:
 
 ```powershell
-.\.venv\Scripts\python.exe evaluate_rag.py --top-k 3 --report "$env:TEMP\restaurant-ai-rag.json"
+.\.venv\Scripts\python.exe -m scripts.evaluation.evaluate_rag --top-k 3 --report "$env:TEMP\restaurant-ai-rag.json"
 ```
 
 The retrieval command makes one Gemini embedding request per query. Answer
@@ -371,7 +371,7 @@ retrieval metrics. To generate answers for manual comparison against the
 reference facts and returned excerpts, explicitly opt in:
 
 ```powershell
-.\.venv\Scripts\python.exe evaluate_rag.py --top-k 3 --generate-answers --report "$env:TEMP\restaurant-ai-rag-answers.json"
+.\.venv\Scripts\python.exe -m scripts.evaluation.evaluate_rag --top-k 3 --generate-answers --report "$env:TEMP\restaurant-ai-rag-answers.json"
 ```
 
 `--generate-answers` can make up to one additional Gemini generation request
@@ -394,8 +394,8 @@ Audit the current Madrid catalog's evidence coverage, embeddings, photo coverage
 kosher freshness, and saved manual holdout judgments with:
 
 ```powershell
-.\.venv\Scripts\python.exe audit_restaurant_coverage.py
-.\.venv\Scripts\python.exe audit_restaurant_coverage.py --format json
+.\.venv\Scripts\python.exe -m scripts.maintenance.audit_restaurant_coverage
+.\.venv\Scripts\python.exe -m scripts.maintenance.audit_restaurant_coverage --format json
 ```
 
 Use `--as-of YYYY-MM-DD` to reproduce freshness counts for a specific date.
@@ -408,7 +408,7 @@ To inspect a separate set of novel queries without using them as labeled
 benchmark cases, run:
 
 ```powershell
-.\.venv\Scripts\python.exe evaluate_restaurant_search.py --cases .\data\restaurant_evaluation\madrid_holdout_queries.json --top-k 5
+.\.venv\Scripts\python.exe -m scripts.evaluation.evaluate_restaurant_search --cases .\data\restaurant_evaluation\madrid_holdout_queries.json --top-k 5
 ```
 
 This prints the top results with their OSM cuisine and feature attributes plus
@@ -590,7 +590,7 @@ public source and attribution URLs.
 From the `backend` directory, run it with:
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.mcp_server
+.\.venv\Scripts\python.exe -m app.interfaces.mcp.server
 ```
 
 Configure an MCP-compatible local client to launch the same command using
@@ -602,7 +602,7 @@ Configure an MCP-compatible local client to launch the same command using
     "restaurant-ai-rag": {
       "type": "stdio",
       "command": "C:\\path\\to\\restaurant-ai-rag\\backend\\.venv\\Scripts\\python.exe",
-      "args": ["-m", "app.mcp_server"],
+      "args": ["-m", "app.interfaces.mcp.server"],
       "cwd": "C:\\path\\to\\restaurant-ai-rag\\backend"
     }
   }
@@ -638,7 +638,7 @@ the existing FastAPI or MCP contracts.
 Start the server from `backend`:
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.a2a_server
+.\.venv\Scripts\python.exe -m app.interfaces.a2a.restaurant_discovery_server
 ```
 
 It listens on loopback at `http://127.0.0.1:8001`. The Agent Card is available at
@@ -702,7 +702,7 @@ result; they do not require PostgreSQL or call Gemini:
 
 ### Itinerary planner A2A client
 
-`app.itinerary_planner_client` is a separate client-side delegation component:
+`app.itinerary_planning.infrastructure.a2a.restaurant_discovery_client` is a separate client-side delegation component:
 it discovers the restaurant Agent Card, sends a text task, checks the task
 state, and validates the `restaurant_discovery_result` JSON artifact against
 the existing response schema. It returns restaurant evidence to its caller;
@@ -711,7 +711,7 @@ it does not invent or generate itinerary details.
 With the A2A server running, a real request can be sent from a second terminal:
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.itinerary_planner_client "Find vegetarian restaurants in Madrid"
+.\.venv\Scripts\python.exe -m scripts.a2a.restaurant_discovery_client "Find vegetarian restaurants in Madrid"
 ```
 
 This command invokes the existing restaurant Agent and therefore needs its
@@ -723,11 +723,11 @@ transport and replace its Agent execution with a synthetic result:
 .\.venv\Scripts\python.exe -m pytest tests\contracts\a2a\test_itinerary_planner_client.py
 ```
 
-The separate `app.itinerary_planner` module builds a deterministic dining draft
+The separate `app.itinerary_planning.application.planner` module builds a deterministic dining draft
 from those structured candidates. Give it the trip length explicitly:
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.itinerary_planner --days 3 "Find vegetarian restaurants in Madrid"
+.\.venv\Scripts\python.exe -m scripts.a2a.plan_itinerary --days 3 "Find vegetarian restaurants in Madrid"
 ```
 
 The MVP assigns at most one candidate per day in the Agent's retrieval order,
@@ -748,7 +748,7 @@ Itinerary Planner Agent in a second terminal while the Restaurant Discovery
 Agent is running:
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.itinerary_planner_server
+.\.venv\Scripts\python.exe -m app.interfaces.a2a.itinerary_planner_server
 ```
 
 It listens on `http://127.0.0.1:8002`; its Agent Card is at
@@ -818,7 +818,7 @@ Gemini:
 For a terminal client, with both agents running, use:
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.itinerary_planner_agent_client --days 3 "vegetarian restaurants in Madrid"
+.\.venv\Scripts\python.exe -m scripts.a2a.itinerary_planner_agent_client --days 3 "vegetarian restaurants in Madrid"
 ```
 
 The client discovers the Itinerary Planner Agent, sends the JSON request,

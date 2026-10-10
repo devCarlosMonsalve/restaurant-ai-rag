@@ -2,7 +2,7 @@ from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.coverage_audit import build_coverage_report
+from app.restaurant_discovery.application.coverage_audit import build_coverage_report
 
 
 def test_coverage_report_counts_restaurants_once_and_classifies_kosher_dates() -> None:

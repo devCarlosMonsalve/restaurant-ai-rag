@@ -7,11 +7,11 @@ from app.restaurant_discovery.application.service import search_verified_candida
 from app.restaurant_discovery.infrastructure.postgres import (
     PostgresRestaurantDiscoveryAdapter,
 )
-from app.image_search import search_images_by_text
-from app.image_embeddings import IMAGE_EMBEDDING_DIMENSIONS
+from app.infrastructure.persistence.postgres.image_queries import search_images_by_text
+from app.infrastructure.embeddings.image import IMAGE_EMBEDDING_DIMENSIONS
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
-from app.restaurant_search import search_osm_places_by_text
+from app.infrastructure.persistence.postgres.restaurant_queries import search_osm_places_by_text
 from app.schemas import OsmRestaurantSearchResult
 
 pytestmark = pytest.mark.integration

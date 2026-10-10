@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.osm_place import OsmPlace
-from app.open_data_sources import OSMRestaurant
+from app.infrastructure.external_data.open_data_sources import OSMRestaurant
 from app.ingestion import upsert_osm_place
 
 

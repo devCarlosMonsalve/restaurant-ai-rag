@@ -26,11 +26,11 @@ from app.core.config import settings
 from app.restaurant_discovery.infrastructure.postgres import (
     PostgresRestaurantDiscoveryAdapter,
 )
-from app.observability import (
+from app.infrastructure.observability import (
     disable_automatic_langchain_tracing,
     traced_span,
 )
-from app.model_routing import (
+from app.infrastructure.llm.model_routing import (
     ModelRouteError,
     call_restaurant_search_model,
     create_restaurant_search_router,
