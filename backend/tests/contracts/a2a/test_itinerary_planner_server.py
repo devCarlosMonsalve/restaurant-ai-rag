@@ -19,6 +19,9 @@ from app.agents.schemas import (
     RestaurantSearchAgentCandidate,
     RestaurantSearchAgentResponse,
 )
+from app.itinerary_planning.infrastructure.a2a.restaurant_discovery_client import (
+    A2ARestaurantEvidenceProvider,
+)
 
 
 def send_planner_request(
@@ -131,11 +134,16 @@ def test_planner_agent_delegates_to_restaurant_agent_and_returns_draft(
     async def plan_through_in_process_agent(
         query: str,
         day_count: int,
+        *,
+        evidence_provider: object,
     ) -> itinerary_planner.ItineraryDiningDraft:
+        del evidence_provider
         return await itinerary_planner.plan_itinerary_dining(
             query,
             day_count,
-            transport=httpx.ASGITransport(app=a2a_server.app),
+            evidence_provider=A2ARestaurantEvidenceProvider(
+                transport=httpx.ASGITransport(app=a2a_server.app)
+            ),
         )
 
     monkeypatch.setattr(a2a_server, "_run_restaurant_search", fake_search)
@@ -189,8 +197,13 @@ def test_planner_agent_rejects_invalid_json_without_delegating(
     payload: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def unexpected_plan(_query: str, _day_count: int) -> None:
-        del _query, _day_count
+    async def unexpected_plan(
+        _query: str,
+        _day_count: int,
+        *,
+        evidence_provider: object,
+    ) -> None:
+        del _query, _day_count, evidence_provider
         pytest.fail("Invalid JSON requests must not invoke itinerary planning")
 
     monkeypatch.setattr(
@@ -209,8 +222,13 @@ def test_planner_agent_rejects_invalid_json_without_delegating(
 def test_planner_agent_sanitizes_downstream_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def failed_plan(_query: str, _day_count: int) -> None:
-        del _query, _day_count
+    async def failed_plan(
+        _query: str,
+        _day_count: int,
+        *,
+        evidence_provider: object,
+    ) -> None:
+        del _query, _day_count, evidence_provider
         raise RuntimeError("private provider detail")
 
     monkeypatch.setattr(

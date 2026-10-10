@@ -734,8 +734,9 @@ The MVP assigns at most one candidate per day in the Agent's retrieval order,
 never repeats a restaurant, and returns extra candidates as alternatives.
 Days without enough evidence remain unfilled. Day numbers are placeholders;
 the planner does not infer travel routes, opening hours, availability, or
-reservations. Its in-memory tests exercise the A2A exchange with synthetic
-candidates and do not call Gemini or PostgreSQL:
+reservations. Its unit tests use a synthetic evidence-provider double; the A2A
+contract tests separately exercise the in-memory Agent exchange. Neither calls
+Gemini or PostgreSQL:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\unit\contexts\planning\test_itinerary_planner.py

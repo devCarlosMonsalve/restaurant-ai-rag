@@ -1,18 +1,19 @@
 import asyncio
 
-import httpx
 import pytest
 
-from app.interfaces.a2a import restaurant_discovery_server as a2a_server
-from app.agents.schemas import (
-    RestaurantSearchAgentCandidate,
-    RestaurantSearchAgentResponse,
+from app.itinerary_planning.application.contracts import (
+    RestaurantEvidenceCandidate,
+    RestaurantSearchEvidence,
 )
-from app.itinerary_planning.application.planner import ItineraryDiningDraft, plan_itinerary_dining
+from app.itinerary_planning.application.planner import (
+    ItineraryDiningDraft,
+    plan_itinerary_dining,
+)
 
 
-def make_candidate(name: str, osm_id: int) -> RestaurantSearchAgentCandidate:
-    return RestaurantSearchAgentCandidate(
+def make_candidate(name: str, osm_id: int) -> RestaurantEvidenceCandidate:
+    return RestaurantEvidenceCandidate(
         name=name,
         city="Madrid",
         cuisine="vegetarian",
@@ -27,48 +28,39 @@ def make_candidate(name: str, osm_id: int) -> RestaurantSearchAgentCandidate:
     )
 
 
-def plan_with_in_process_agent(
-    query: str,
-    day_count: int,
-) -> ItineraryDiningDraft:
-    async def invoke() -> ItineraryDiningDraft:
-        async with a2a_server.app.router.lifespan_context(a2a_server.app):
-            return await plan_itinerary_dining(
-                query,
-                day_count,
-                transport=httpx.ASGITransport(app=a2a_server.app),
-            )
+class StubRestaurantEvidenceProvider:
+    def __init__(self, evidence: RestaurantSearchEvidence) -> None:
+        self.evidence = evidence
+        self.queries: list[str] = []
 
-    return asyncio.run(invoke())
+    async def search_restaurants(self, query: str) -> RestaurantSearchEvidence:
+        self.queries.append(query)
+        return self.evidence
 
 
-def test_planner_assigns_ranked_candidates_once_per_day(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_planner_assigns_ranked_candidates_once_per_day() -> None:
     candidates = [
         make_candidate("Casa Verde", 1),
         make_candidate("Sana Vegetariana", 2),
         make_candidate("Ecocentro", 3),
     ]
 
-    def fake_search(_query: str) -> RestaurantSearchAgentResponse:
-        del _query
-        return RestaurantSearchAgentResponse(
+    provider = StubRestaurantEvidenceProvider(
+        RestaurantSearchEvidence(
             answer="Synthetic candidates from the restaurant Agent.",
             restaurants=candidates,
         )
-
-    monkeypatch.setattr(
-        a2a_server,
-        "_run_restaurant_search",
-        fake_search,
     )
 
-    draft = plan_with_in_process_agent(
-        "vegetarian restaurants in Madrid",
-        day_count=2,
+    draft = asyncio.run(
+        plan_itinerary_dining(
+            "vegetarian restaurants in Madrid",
+            day_count=2,
+            evidence_provider=provider,
+        )
     )
 
+    assert provider.queries == ["vegetarian restaurants in Madrid"]
     assert draft.requested_days == 2
     assert [suggestion.day_number for suggestion in draft.days] == [1, 2]
     assert [suggestion.restaurant.name for suggestion in draft.days] == [
@@ -84,24 +76,20 @@ def test_planner_assigns_ranked_candidates_once_per_day(
 
 
 def test_planner_leaves_days_unfilled_when_evidence_is_insufficient(
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_search(_query: str) -> RestaurantSearchAgentResponse:
-        del _query
-        return RestaurantSearchAgentResponse(
+    provider = StubRestaurantEvidenceProvider(
+        RestaurantSearchEvidence(
             answer="One synthetic candidate.",
             restaurants=[make_candidate("Casa Verde", 1)],
         )
-
-    monkeypatch.setattr(
-        a2a_server,
-        "_run_restaurant_search",
-        fake_search,
     )
 
-    draft = plan_with_in_process_agent(
-        "vegetarian restaurants in Madrid",
-        day_count=3,
+    draft = asyncio.run(
+        plan_itinerary_dining(
+            "vegetarian restaurants in Madrid",
+            day_count=3,
+            evidence_provider=provider,
+        )
     )
 
     assert [suggestion.restaurant.name for suggestion in draft.days] == [
@@ -112,23 +100,19 @@ def test_planner_leaves_days_unfilled_when_evidence_is_insufficient(
 
 
 def test_planner_reports_all_days_unfilled_when_no_candidates(
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_search(_query: str) -> RestaurantSearchAgentResponse:
-        del _query
-        return RestaurantSearchAgentResponse(
+    provider = StubRestaurantEvidenceProvider(
+        RestaurantSearchEvidence(
             answer="No structured candidates were returned.",
         )
-
-    monkeypatch.setattr(
-        a2a_server,
-        "_run_restaurant_search",
-        fake_search,
     )
 
-    draft = plan_with_in_process_agent(
-        "vegetarian restaurants in Madrid",
-        day_count=2,
+    draft = asyncio.run(
+        plan_itinerary_dining(
+            "vegetarian restaurants in Madrid",
+            day_count=2,
+            evidence_provider=provider,
+        )
     )
 
     assert draft.days == []
@@ -147,5 +131,15 @@ def test_planner_rejects_invalid_request_before_network_call(
     query: str,
     day_count: int,
 ) -> None:
+    provider = StubRestaurantEvidenceProvider(
+        RestaurantSearchEvidence(answer="No search should occur.")
+    )
     with pytest.raises(ValueError, match="positive day count"):
-        asyncio.run(plan_itinerary_dining(query, day_count))
+        asyncio.run(
+            plan_itinerary_dining(
+                query,
+                day_count,
+                evidence_provider=provider,
+            )
+        )
+    assert provider.queries == []

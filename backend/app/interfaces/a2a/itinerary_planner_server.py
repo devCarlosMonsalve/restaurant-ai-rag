@@ -27,6 +27,10 @@ from app.itinerary_planning.application.planner import (
     ItineraryPlanningRequest,
     plan_itinerary_dining,
 )
+from app.itinerary_planning.application.ports import RestaurantEvidenceProvider
+from app.itinerary_planning.infrastructure.a2a.restaurant_discovery_client import (
+    A2ARestaurantEvidenceProvider,
+)
 from app.infrastructure.observability import (
     configure_phoenix_tracing,
     shutdown_phoenix_tracing,
@@ -108,6 +112,9 @@ def _read_planning_request(message: Message) -> ItineraryPlanningRequest:
 
 
 class ItineraryPlannerExecutor(AgentExecutor):
+    def __init__(self, evidence_provider: RestaurantEvidenceProvider) -> None:
+        self._evidence_provider = evidence_provider
+
     async def execute(
         self,
         context: RequestContext,
@@ -147,6 +154,7 @@ class ItineraryPlannerExecutor(AgentExecutor):
                 draft = await plan_itinerary_dining(
                     request.query,
                     request.day_count,
+                    evidence_provider=self._evidence_provider,
                 )
             except Exception as error:
                 logger.error(
@@ -199,7 +207,7 @@ async def lifespan(_app: Starlette) -> AsyncGenerator[None, None]:
 
 
 _REQUEST_HANDLER = DefaultRequestHandler(
-    agent_executor=ItineraryPlannerExecutor(),
+    agent_executor=ItineraryPlannerExecutor(A2ARestaurantEvidenceProvider()),
     task_store=InMemoryTaskStore(),
     agent_card=AGENT_CARD,
 )

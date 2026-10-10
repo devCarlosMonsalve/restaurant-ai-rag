@@ -3,6 +3,7 @@ import asyncio
 
 from app.itinerary_planning.application.planner import plan_itinerary_dining
 from app.itinerary_planning.infrastructure.a2a.restaurant_discovery_client import (
+    A2ARestaurantEvidenceProvider,
     DEFAULT_RESTAURANT_AGENT_URL,
 )
 
@@ -28,7 +29,9 @@ def main() -> None:
         plan_itinerary_dining(
             args.query,
             args.days,
-            agent_url=args.agent_url,
+            evidence_provider=A2ARestaurantEvidenceProvider(
+                agent_url=args.agent_url
+            ),
         )
     )
     print(draft.model_dump_json(indent=2))

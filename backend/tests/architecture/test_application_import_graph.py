@@ -109,3 +109,41 @@ def test_context_applications_do_not_depend_on_infrastructure_or_global_schemas(
         "A context application depends on infrastructure or global schemas:\n"
         + "\n".join(sorted(violations))
     )
+
+
+def test_itinerary_planning_application_does_not_depend_on_transport_or_agents() -> None:
+    modules = _app_modules()
+    forbidden = (
+        "app.itinerary_planning.infrastructure",
+        "app.interfaces",
+        "app.agents",
+    )
+    violations = []
+    for module, path in modules.items():
+        if not module.startswith("app.itinerary_planning.application."):
+            continue
+        for dependency in _dependencies(module, path, modules):
+            if any(
+                dependency == prefix or dependency.startswith(f"{prefix}.")
+                for prefix in forbidden
+            ):
+                violations.append(f"{path}: {dependency}")
+
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            imported_modules = []
+            if isinstance(node, ast.Import):
+                imported_modules.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported_modules.append(node.module)
+            violations.extend(
+                f"{path}: {imported_module}"
+                for imported_module in imported_modules
+                if imported_module == "httpx"
+                or imported_module.startswith("httpx.")
+            )
+
+    assert not violations, (
+        "Itinerary Planning application depends on transport or Agent schemas:\n"
+        + "\n".join(sorted(violations))
+    )

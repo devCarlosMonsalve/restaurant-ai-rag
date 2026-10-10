@@ -10,6 +10,10 @@ from app.agents.schemas import (
     RestaurantSearchAgentRequest,
     RestaurantSearchAgentResponse,
 )
+from app.itinerary_planning.application.contracts import (
+    RestaurantEvidenceCandidate,
+    RestaurantSearchEvidence,
+)
 
 DEFAULT_RESTAURANT_AGENT_URL = "http://127.0.0.1:8001"
 RESTAURANT_DISCOVERY_ARTIFACT = "restaurant_discovery_result"
@@ -17,6 +21,33 @@ RESTAURANT_DISCOVERY_ARTIFACT = "restaurant_discovery_result"
 
 class RestaurantDiscoveryDelegationError(RuntimeError):
     """The itinerary planner could not consume a restaurant discovery task."""
+
+
+class A2ARestaurantEvidenceProvider:
+    def __init__(
+        self,
+        *,
+        agent_url: str = DEFAULT_RESTAURANT_AGENT_URL,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._agent_url = agent_url
+        self._transport = transport
+
+    async def search_restaurants(self, query: str) -> RestaurantSearchEvidence:
+        response = await delegate_restaurant_discovery(
+            query,
+            agent_url=self._agent_url,
+            transport=self._transport,
+        )
+        return RestaurantSearchEvidence(
+            answer=response.answer,
+            restaurants=[
+                RestaurantEvidenceCandidate.model_validate(
+                    candidate.model_dump()
+                )
+                for candidate in response.restaurants
+            ],
+        )
 
 
 async def delegate_restaurant_discovery(
