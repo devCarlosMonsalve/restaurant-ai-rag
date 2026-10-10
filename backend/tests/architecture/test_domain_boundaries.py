@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 
-APP_DIR = Path(__file__).resolve().parents[1] / "app"
+APP_DIR = Path(__file__).resolve().parents[2] / "app"
 DOMAIN_DIR = APP_DIR / "domain"
 
 
@@ -45,7 +45,7 @@ def _import_targets(path: Path, module_name: str) -> set[str]:
     return targets
 
 
-def test_domain_modules_only_import_standard_library_or_domain() -> None:
+def test_domain_imports_respect_layer_boundaries() -> None:
     violations: list[str] = []
 
     for module_name, path in _domain_modules().items():

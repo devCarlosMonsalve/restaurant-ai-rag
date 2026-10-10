@@ -5,7 +5,6 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.restaurant_search_agent import (
@@ -24,6 +23,15 @@ from app.application.restaurant_discovery import (
     search_restaurants as search_restaurants_use_case,
 )
 from app.database import get_db
+from app.application.restaurant_catalog import (
+    RestaurantCatalog,
+    create_restaurant as create_restaurant_use_case,
+    list_osm_places as list_osm_places_use_case,
+    list_restaurants as list_restaurants_use_case,
+)
+from app.infrastructure.persistence.postgres.restaurant_catalog import (
+    PostgresRestaurantCatalog,
+)
 from app.knowledge.application.search_documents import (
     search_documents as search_documents_use_case,
 )
@@ -36,9 +44,6 @@ from app.knowledge.infrastructure.postgres.retriever import (
 from app.infrastructure.persistence.postgres.restaurant_discovery import (
     PostgresRestaurantDiscoveryAdapter,
 )
-from app.models.image_embedding import ImageEmbedding
-from app.models.osm_place import OsmPlace
-from app.models.restaurant import Restaurant
 from app.observability import (
     configure_phoenix_tracing,
     shutdown_phoenix_tracing,
@@ -85,13 +90,17 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 STATIC_DIR = BACKEND_DIR / "static"
 COMMONS_IMAGES_DIR = BACKEND_DIR / "data" / "images" / "commons"
 
-OSM_ATTRIBUTION = "© OpenStreetMap contributors"
-OSM_ATTRIBUTION_URL = "https://www.openstreetmap.org/copyright"
 
 
 @app.get("/health", tags=["health"])
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def get_restaurant_catalog(
+    db: Session = Depends(get_db),
+) -> RestaurantCatalog:
+    return PostgresRestaurantCatalog(db)
 
 
 @app.post(
@@ -102,50 +111,23 @@ def health_check() -> dict[str, str]:
 )
 def create_restaurant(
     restaurant_data: RestaurantCreate,
-    db: Session = Depends(get_db),
-) -> Restaurant:
-    restaurant = Restaurant(**restaurant_data.model_dump())
-    db.add(restaurant)
-    db.commit()
-    db.refresh(restaurant)
-    return restaurant
+    catalog: RestaurantCatalog = Depends(get_restaurant_catalog),
+) -> RestaurantRead:
+    return create_restaurant_use_case(restaurant_data, catalog)
 
 
 @app.get("/restaurants", response_model=list[RestaurantRead], tags=["restaurants"])
-def list_restaurants(db: Session = Depends(get_db)) -> list[Restaurant]:
-    return list(db.scalars(select(Restaurant).order_by(Restaurant.name)).all())
+def list_restaurants(
+    catalog: RestaurantCatalog = Depends(get_restaurant_catalog),
+) -> list[RestaurantRead]:
+    return list_restaurants_use_case(catalog)
 
 
 @app.get("/restaurants/osm", response_model=list[OsmPlaceRead], tags=["restaurants"])
-def list_osm_places(db: Session = Depends(get_db)) -> list[OsmPlaceRead]:
-    has_photos = (
-        select(ImageEmbedding.id)
-        .where(ImageEmbedding.osm_place_id == OsmPlace.id)
-        .exists()
-    )
-    places = db.execute(
-        select(OsmPlace, has_photos.label("has_photos")).order_by(OsmPlace.name)
-    ).all()
-    return [
-        OsmPlaceRead(
-            id=place.id,
-            osm_type=place.osm_type,
-            osm_id=place.osm_id,
-            name=place.name,
-            city=place.city,
-            cuisine=place.cuisine,
-            location=place.location,
-            latitude=place.latitude,
-            longitude=place.longitude,
-            features=place.features or [],
-            wikimedia_commons=place.wikimedia_commons,
-            source_url=place.source_url,
-            attribution=OSM_ATTRIBUTION,
-            attribution_url=OSM_ATTRIBUTION_URL,
-            has_photos=place_has_photos,
-        )
-        for place, place_has_photos in places
-    ]
+def list_osm_places(
+    catalog: RestaurantCatalog = Depends(get_restaurant_catalog),
+) -> list[OsmPlaceRead]:
+    return list_osm_places_use_case(catalog)
 
 
 @app.post(

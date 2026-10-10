@@ -193,38 +193,32 @@ confidence scores. OSM feature evidence may be incomplete or stale; unsupported
 details can remain unverified. Kosher evidence is subject to the documented
 freshness policy but its certifier is not independently validated.
 
-FastAPI routes in `app.main` and the Tool adapters are separate entry points
-that call the same application use cases. The backend is being migrated toward
-dependency-inverted DDD boundaries incrementally, without changing the HTTP,
-MCP, A2A, or CLI contracts:
+FastAPI routes, Tools, Agents, workflows, MCP, A2A, and CLI scripts are distinct
+delivery/integration boundaries. The backend is a modular monolith organized
+around functional contexts where the code supports a real boundary. Its
+bounded-context map, current tree, and keep/move decisions for app modules,
+tests, scripts, configuration, data, and migrations are documented in
+[ARCHITECTURE.md](./ARCHITECTURE.md).
 
-- `app.domain` holds framework-independent policies and domain types.
-- `app.application` coordinates use cases through ports rather than depending
-  directly on SQLAlchemy sessions.
-- `app.infrastructure` contains persistence- and provider-specific adapters.
-- `app.main`, Tools, Agents, workflows, MCP, A2A, and CLI scripts remain
-  delivery/integration boundaries.
+The basic restaurant catalog endpoints in `app.main` now delegate through the
+`RestaurantCatalog` application port to a PostgreSQL adapter; the HTTP module
+keeps route registration, schema declarations, and `get_db` dependency wiring.
 
-The migrated domain policies cover restaurant-search evidence,
+The dependency-free policies cover restaurant-search evidence,
 candidate-photo association, and document text preparation. Intent detection,
 feature matching, and kosher freshness live in
 `app.domain.restaurant_discovery.evidence`; exact-source photo association
 lives in `app.domain.restaurant_discovery.photo_association`; and Unicode
-normalization and text chunking live in `app.knowledge.domain.text`.
-PostgreSQL JSONB query generation is isolated in
-`app.infrastructure.persistence.postgres.evidence_queries`, while file reading
-for text ingestion lives in `app.infrastructure.filesystem.text_documents`.
-Document retrieval and RAG answer orchestration now have Knowledge-specific
-infrastructure and application boundaries. Document ingestion still combines
-file processing, embedding generation, and persistence in its existing path;
-that work remains a separate migration.
+normalization and chunking live in `app.knowledge.domain.text`.
 
-Tools, MCP, A2A, HTTP, and CLI remain delivery/integration boundaries. Future
-work should keep their current request and response contracts while separating
-image, document, and OSM ingestion rules from filesystem, database,
-embedding-provider, and external-data clients.
-
-Do not treat ORM rows or API schemas as domain entities.
+PostgreSQL restaurant and image query implementations live under
+`app.infrastructure.persistence.postgres`; the original `app.restaurant_search`
+and `app.image_search` paths remain compatibility facades. Text, image, and
+OSM ingestion coordination lives in `app.ingestion.application`, with legacy
+imports retained in the root ingestion modules. Knowledge retrieval and
+generation remain in `app.knowledge`; filesystem, model, database, and external
+data clients remain infrastructure. ORM records and API schemas are not
+domain entities.
 
 ## Knowledge/RAG generation
 
