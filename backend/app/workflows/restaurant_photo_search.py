@@ -5,19 +5,19 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from sqlalchemy.orm import Session
 
-from app.application.restaurant_discovery import (
+from app.restaurant_discovery.application.service import (
     search_restaurants as search_restaurants_use_case,
     search_verified_candidate_photos,
 )
 from app.image_presentation import image_file_url
-from app.infrastructure.persistence.postgres.restaurant_discovery import (
+from app.restaurant_discovery.infrastructure.postgres import (
     PostgresRestaurantDiscoveryAdapter,
 )
 from app.observability import (
     disable_automatic_langchain_tracing,
     traced_span,
 )
-from app.schemas import (
+from app.restaurant_discovery.application.contracts import (
     ImageSearchResult,
     OsmRestaurantSearchRequest,
     OsmRestaurantSearchResponse,

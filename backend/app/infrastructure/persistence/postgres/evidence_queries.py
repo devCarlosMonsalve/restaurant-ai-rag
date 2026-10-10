@@ -2,7 +2,7 @@ from sqlalchemy import and_, cast, or_
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.domain.restaurant_discovery.evidence import FeatureRequirement
+from app.restaurant_discovery.domain.evidence import FeatureRequirement
 
 
 def feature_requirements_clause(

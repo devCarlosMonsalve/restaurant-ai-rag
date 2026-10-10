@@ -105,7 +105,7 @@ def test_evaluation_reports_filter_compliance_and_expected_empty_rate(
 
 def test_holdout_queries_are_valid_and_all_for_manual_review() -> None:
     cases = load_cases(
-        Path(__file__).parent.parent
+        Path(__file__).parents[2]
         / "data"
         / "restaurant_evaluation"
         / "madrid_holdout_queries.json"
@@ -116,7 +116,7 @@ def test_holdout_queries_are_valid_and_all_for_manual_review() -> None:
 
 
 def test_holdout_judgments_cover_each_manual_query() -> None:
-    data_dir = Path(__file__).parent.parent / "data" / "restaurant_evaluation"
+    data_dir = Path(__file__).parents[2] / "data" / "restaurant_evaluation"
     holdout_cases = load_cases(data_dir / "madrid_holdout_queries.json")
     judgments_data = json.loads(
         (data_dir / "madrid_holdout_judgments.json").read_text(encoding="utf-8")

@@ -5,7 +5,7 @@ from app.embeddings import embed_search_query
 from app.knowledge.application.ports import DocumentRetriever
 from app.models.document_chunk import DocumentChunk
 from app.observability import traced_span
-from app.schemas import DocumentSearchResult
+from app.knowledge.application.contracts import DocumentSearchResult
 
 
 class PostgresDocumentRetriever:

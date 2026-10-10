@@ -1,6 +1,6 @@
 from typing import Protocol
 
-from app.schemas import DocumentSearchResult
+from app.knowledge.application.contracts import DocumentSearchResult
 
 
 class DocumentRetriever(Protocol):

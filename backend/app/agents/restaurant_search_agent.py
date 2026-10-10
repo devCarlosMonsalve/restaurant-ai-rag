@@ -8,10 +8,10 @@ from langgraph.runtime import Runtime
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.application.restaurant_discovery import (
+from app.restaurant_discovery.application.service import (
     search_verified_candidate_photos,
 )
-from app.domain.restaurant_discovery.query_intent import (
+from app.restaurant_discovery.domain.query_intent import (
     asks_for_photos as _asks_for_photos,
     is_spanish_query as _is_spanish_query,
     normalize_text as _normalize_text,
@@ -23,7 +23,7 @@ from app.agents.schemas import (
     RestaurantSearchAgentResponse,
 )
 from app.core.config import settings
-from app.infrastructure.persistence.postgres.restaurant_discovery import (
+from app.restaurant_discovery.infrastructure.postgres import (
     PostgresRestaurantDiscoveryAdapter,
 )
 from app.observability import (
@@ -35,7 +35,10 @@ from app.model_routing import (
     call_restaurant_search_model,
     create_restaurant_search_router,
 )
-from app.schemas import ImageSearchRequest, OsmRestaurantSearchResult
+from app.restaurant_discovery.application.contracts import (
+    ImageSearchRequest,
+    OsmRestaurantSearchResult,
+)
 from app.tools.registry import (
     dispatch_tool_call,
     serialize_tool_result,

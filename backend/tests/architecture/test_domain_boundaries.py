@@ -4,17 +4,27 @@ import sys
 
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
-DOMAIN_DIR = APP_DIR / "domain"
+DOMAIN_DIRS = [
+    APP_DIR / "domain",
+    APP_DIR / "restaurant_discovery" / "domain",
+    APP_DIR / "knowledge" / "domain",
+]
+DOMAIN_IMPORT_ROOTS = (
+    "app.domain",
+    "app.knowledge.domain",
+    "app.restaurant_discovery.domain",
+)
 
 
 def _domain_modules() -> dict[str, Path]:
     modules: dict[str, Path] = {}
-    for path in DOMAIN_DIR.rglob("*.py"):
-        relative = path.relative_to(APP_DIR).with_suffix("")
-        parts = list(relative.parts)
-        if parts[-1] == "__init__":
-            parts.pop()
-        modules["app." + ".".join(parts)] = path
+    for domain_dir in DOMAIN_DIRS:
+        for path in domain_dir.rglob("*.py"):
+            relative = path.relative_to(APP_DIR).with_suffix("")
+            parts = list(relative.parts)
+            if parts[-1] == "__init__":
+                parts.pop()
+            modules["app." + ".".join(parts)] = path
     return modules
 
 
@@ -52,7 +62,11 @@ def test_domain_imports_respect_layer_boundaries() -> None:
         for target in _import_targets(path, module_name):
             root = target.split(".", maxsplit=1)[0]
             if root == "app":
-                if target != "app.domain" and not target.startswith("app.domain."):
+                if not any(
+                    target == domain_root
+                    or target.startswith(f"{domain_root}.")
+                    for domain_root in DOMAIN_IMPORT_ROOTS
+                ):
                     violations.append(f"{path}: {target}")
             elif root not in sys.stdlib_module_names:
                 violations.append(f"{path}: {target}")

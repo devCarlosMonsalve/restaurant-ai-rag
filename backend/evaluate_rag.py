@@ -21,7 +21,7 @@ from app.knowledge.infrastructure.postgres.retriever import (
     PostgresDocumentRetriever,
 )
 from app.embeddings import EMBEDDING_DIMENSIONS, GEMINI_EMBEDDING_MODEL
-from evaluation_utils import (
+from evaluation.utils import (
     build_run_metadata,
     fingerprint_rows,
     write_evaluation_report,

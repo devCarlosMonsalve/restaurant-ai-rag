@@ -5,10 +5,33 @@ import pytest
 
 from app.application import (
     document_answer as document_answer_use_case,
-    restaurant_discovery,
 )
+from app.application import restaurant_discovery as legacy_restaurant_discovery
 from app.knowledge.application import answer_question, search_documents
+from app.knowledge.application.contracts import (
+    DocumentSearchRequest as KnowledgeDocumentSearchRequest,
+    DocumentSearchResult as KnowledgeDocumentSearchResult,
+    RagAnswerResponse as KnowledgeRagAnswerResponse,
+    RagQuestionRequest as KnowledgeRagQuestionRequest,
+)
+from app.restaurant_discovery.application import service as restaurant_discovery
+from app.restaurant_discovery.application.ports import (
+    RestaurantDiscoveryPort,
+)
+from app.restaurant_discovery.application.contracts import (
+    ImageSearchRequest,
+    OsmRestaurantSearchRequest,
+)
+from app.restaurant_discovery.infrastructure.postgres import (
+    PostgresRestaurantDiscoveryAdapter,
+)
+from app.application.ports import RestaurantDiscoveryPort as LegacyRestaurantDiscoveryPort
+from app.infrastructure.persistence.postgres.restaurant_discovery import (
+    PostgresRestaurantDiscoveryAdapter as LegacyPostgresRestaurantDiscoveryAdapter,
+)
 from app.schemas import (
+    DocumentSearchRequest as LegacyDocumentSearchRequest,
+    DocumentSearchResult as LegacyDocumentSearchResult,
     DocumentSearchRequest,
     DocumentSearchResult,
     ImageSearchResult,
@@ -20,6 +43,29 @@ from app.schemas import (
     RagQuestionWithPhotosRequest,
     RagSource,
 )
+from app.schemas import (
+    ImageSearchRequest as LegacyImageSearchRequest,
+    OsmRestaurantSearchRequest as LegacyOsmRestaurantSearchRequest,
+)
+
+
+def test_discovery_import_paths_are_backward_compatible() -> None:
+    assert (
+        legacy_restaurant_discovery.search_restaurants
+        is restaurant_discovery.search_restaurants
+    )
+    assert (
+        legacy_restaurant_discovery.search_restaurant_photos
+        is restaurant_discovery.search_restaurant_photos
+    )
+    assert LegacyRestaurantDiscoveryPort is RestaurantDiscoveryPort
+    assert LegacyPostgresRestaurantDiscoveryAdapter is PostgresRestaurantDiscoveryAdapter
+    assert LegacyImageSearchRequest is ImageSearchRequest
+    assert LegacyOsmRestaurantSearchRequest is OsmRestaurantSearchRequest
+    assert LegacyDocumentSearchRequest is KnowledgeDocumentSearchRequest
+    assert LegacyDocumentSearchResult is KnowledgeDocumentSearchResult
+    assert RagAnswerResponse is KnowledgeRagAnswerResponse
+    assert RagQuestionRequest is KnowledgeRagQuestionRequest
 
 
 def test_search_restaurants_use_case_delegates_to_repository() -> None:

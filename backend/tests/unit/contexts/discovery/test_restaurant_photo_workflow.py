@@ -111,7 +111,7 @@ def install_tool_stub(monkeypatch, candidates, photo_results=None, error=None):
         return photo_results or []
 
     monkeypatch.setattr(
-        "app.application.restaurant_discovery.search_restaurant_photos",
+        "app.restaurant_discovery.application.service.search_restaurant_photos",
         fake_photo_search,
     )
     return calls

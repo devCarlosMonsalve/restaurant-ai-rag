@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def test_evaluation_cases_reference_existing_documents() -> None:
-    evaluation_dir = Path(__file__).parents[1] / "data" / "evaluation"
+    evaluation_dir = Path(__file__).parents[2] / "data" / "evaluation"
     cases = json.loads((evaluation_dir / "cases.json").read_text(encoding="utf-8"))
     document_names = {
         path.name for path in (evaluation_dir / "documents").glob("*.txt")

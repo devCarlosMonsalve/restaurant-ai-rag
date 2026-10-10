@@ -18,7 +18,7 @@ from app.agents.schemas import (
 from app.application.document_answer import (
     answer_from_documents_with_photos as answer_documents_use_case,
 )
-from app.application.restaurant_discovery import (
+from app.restaurant_discovery.application.service import (
     search_restaurant_photos as search_restaurant_photos_use_case,
     search_restaurants as search_restaurants_use_case,
 )
@@ -41,21 +41,25 @@ from app.knowledge.infrastructure.generation.answer_chain import (
 from app.knowledge.infrastructure.postgres.retriever import (
     PostgresDocumentRetriever,
 )
-from app.infrastructure.persistence.postgres.restaurant_discovery import (
+from app.knowledge.application.contracts import (
+    DocumentSearchRequest,
+    DocumentSearchResult,
+)
+from app.restaurant_discovery.infrastructure.postgres import (
     PostgresRestaurantDiscoveryAdapter,
+)
+from app.restaurant_discovery.application.contracts import (
+    ImageSearchRequest,
+    ImageSearchResult,
+    OsmRestaurantSearchRequest,
+    OsmRestaurantSearchResponse,
 )
 from app.observability import (
     configure_phoenix_tracing,
     shutdown_phoenix_tracing,
 )
 from app.schemas import (
-    DocumentSearchRequest,
-    DocumentSearchResult,
-    ImageSearchRequest,
-    ImageSearchResult,
     OsmPlaceRead,
-    OsmRestaurantSearchRequest,
-    OsmRestaurantSearchResponse,
     RagAnswerWithPhotosResponse,
     RagQuestionWithPhotosRequest,
     RestaurantCreate,

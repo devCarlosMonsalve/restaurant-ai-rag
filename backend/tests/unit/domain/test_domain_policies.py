@@ -1,4 +1,4 @@
-from app.domain.restaurant_discovery.photo_association import (
+from app.restaurant_discovery.domain.photo_association import (
     is_verified_photo_association,
 )
 

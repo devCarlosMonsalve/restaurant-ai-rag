@@ -1,12 +1,12 @@
 from sqlalchemy.orm import Session
 
-from app.application.restaurant_discovery import (
+from app.restaurant_discovery.application.service import (
     search_restaurants as search_restaurants_use_case,
 )
-from app.infrastructure.persistence.postgres.restaurant_discovery import (
+from app.restaurant_discovery.infrastructure.postgres import (
     PostgresRestaurantDiscoveryAdapter,
 )
-from app.schemas import (
+from app.restaurant_discovery.application.contracts import (
     OsmRestaurantSearchRequest,
     OsmRestaurantSearchResponse,
 )

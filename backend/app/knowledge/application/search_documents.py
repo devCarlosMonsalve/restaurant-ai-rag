@@ -1,5 +1,8 @@
 from app.knowledge.application.ports import DocumentRetriever
-from app.schemas import DocumentSearchRequest, DocumentSearchResult
+from app.knowledge.application.contracts import (
+    DocumentSearchRequest,
+    DocumentSearchResult,
+)
 
 
 def search_documents(

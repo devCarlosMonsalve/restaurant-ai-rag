@@ -8,13 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.image_presentation import image_file_url
 from app.observability import traced_span
-from app.schemas import (
+from app.knowledge.application.contracts import (
     DocumentSearchRequest,
-    ImageSearchRequest,
-    ImageSearchResult,
-    OsmRestaurantSearchRequest,
     RagQuestionRequest,
 )
+from app.restaurant_discovery.application.contracts import (
+    ImageSearchRequest,
+    OsmRestaurantSearchRequest,
+)
+from app.restaurant_discovery.application.contracts import ImageSearchResult
 from app.tools.document_answer import answer_from_documents
 from app.tools.document_search import search_documents
 from app.tools.restaurant_photos import search_restaurant_photos

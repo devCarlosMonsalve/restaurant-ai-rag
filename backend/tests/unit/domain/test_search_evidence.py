@@ -1,7 +1,7 @@
 from datetime import date
 from uuid import uuid4
 
-from app.domain.restaurant_discovery.evidence import (
+from app.restaurant_discovery.domain.evidence import (
     detect_search_evidence,
     matches_feature_requirements,
 )

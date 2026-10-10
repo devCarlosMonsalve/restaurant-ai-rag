@@ -3,8 +3,8 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.application.restaurant_discovery import search_verified_candidate_photos
-from app.infrastructure.persistence.postgres.restaurant_discovery import (
+from app.restaurant_discovery.application.service import search_verified_candidate_photos
+from app.restaurant_discovery.infrastructure.postgres import (
     PostgresRestaurantDiscoveryAdapter,
 )
 from app.image_search import search_images_by_text

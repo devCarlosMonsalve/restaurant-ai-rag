@@ -15,7 +15,7 @@ from app.database import SessionLocal
 from app.image_search import search_images_by_text
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
-from evaluation_utils import (
+from evaluation.utils import (
     build_run_metadata,
     fingerprint_rows,
     write_evaluation_report,

@@ -5,7 +5,7 @@ from app.knowledge.application.ports import (
     GroundedAnswerGenerator,
 )
 from app.observability import traced_span
-from app.schemas import (
+from app.knowledge.application.contracts import (
     DocumentSearchResult,
     RagAnswerResponse,
     RagQuestionRequest,

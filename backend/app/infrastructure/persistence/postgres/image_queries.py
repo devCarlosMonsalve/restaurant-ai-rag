@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.domain.restaurant_discovery.evidence import (
+from app.restaurant_discovery.domain.evidence import (
     detect_search_evidence,
     matches_feature_requirements,
 )
@@ -16,7 +16,7 @@ from app.infrastructure.persistence.postgres.evidence_queries import (
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.place_filters import cuisine_filter
-from app.schemas import ImageSearchResult
+from app.restaurant_discovery.application.contracts import ImageSearchResult
 
 _STOPWORDS = {
     "a",

@@ -6,7 +6,7 @@ import subprocess
 from typing import Iterable, Sequence
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 def fingerprint_rows(rows: Iterable[Sequence[object]]) -> tuple[str, int]:

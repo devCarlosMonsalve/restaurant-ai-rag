@@ -1,30 +1,5 @@
-from typing import Protocol
-from uuid import UUID
+"""Compatibility exports for application ports retained at their old path."""
 
-from app.schemas import (
-    ImageSearchResult,
-    OsmRestaurantSearchResponse,
-)
+from app.restaurant_discovery.application.ports import RestaurantDiscoveryPort
 
-
-class RestaurantDiscoveryPort(Protocol):
-    def search_restaurants(
-        self,
-        query: str,
-        *,
-        top_k: int,
-        city: str | None,
-        cuisine: str | None,
-        include_places_with_photos: bool,
-    ) -> OsmRestaurantSearchResponse: ...
-
-    def search_photos(
-        self,
-        query: str,
-        *,
-        top_k: int,
-        osm_places_only: bool,
-        city: str | None,
-        cuisine: str | None,
-        osm_place_id: UUID | None = None,
-    ) -> list[ImageSearchResult]: ...
+__all__ = ["RestaurantDiscoveryPort"]

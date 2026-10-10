@@ -2,7 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.schemas import OsmRestaurantSearchResponse, RagAnswerResponse
+from app.restaurant_discovery.application.contracts import OsmRestaurantSearchResponse
+from app.knowledge.application.contracts import RagAnswerResponse
 
 
 class McpRestaurantResult(BaseModel):

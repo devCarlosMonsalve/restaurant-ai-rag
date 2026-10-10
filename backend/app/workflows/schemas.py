@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas import OsmRestaurantSearchResult
+from app.restaurant_discovery.application.contracts import OsmRestaurantSearchResult
 
 
 class RestaurantPhotoWorkflowRequest(BaseModel):

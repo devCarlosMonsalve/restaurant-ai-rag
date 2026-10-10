@@ -508,7 +508,7 @@ def test_agent_scopes_photos_by_candidate_id_and_exact_osm_url(
         fake_dispatch,
     )
     monkeypatch.setattr(
-        "app.application.restaurant_discovery.search_restaurant_photos",
+        "app.restaurant_discovery.application.service.search_restaurant_photos",
         fake_candidate_photo_search,
     )
 
@@ -591,7 +591,7 @@ def test_candidate_search_replaces_photos_from_an_earlier_general_search(
         fake_dispatch,
     )
     monkeypatch.setattr(
-        "app.application.restaurant_discovery.search_restaurant_photos",
+        "app.restaurant_discovery.application.service.search_restaurant_photos",
         fake_candidate_photo_search,
     )
 
@@ -648,7 +648,7 @@ def test_agent_forces_photo_search_when_model_omits_it(
         fake_dispatch,
     )
     monkeypatch.setattr(
-        "app.application.restaurant_discovery.search_restaurant_photos",
+        "app.restaurant_discovery.application.service.search_restaurant_photos",
         fake_candidate_photo_search,
     )
 
@@ -695,7 +695,7 @@ def test_agent_explains_when_no_candidate_photos_are_available(
         fake_dispatch,
     )
     monkeypatch.setattr(
-        "app.application.restaurant_discovery.search_restaurant_photos",
+        "app.restaurant_discovery.application.service.search_restaurant_photos",
         lambda request, session, *, osm_place_id: [],
     )
 
@@ -747,7 +747,7 @@ def test_agent_distinguishes_candidate_photo_search_error_from_empty_results(
         fake_dispatch,
     )
     monkeypatch.setattr(
-        "app.application.restaurant_discovery.search_restaurant_photos",
+        "app.restaurant_discovery.application.service.search_restaurant_photos",
         fail_photo_search,
     )
 

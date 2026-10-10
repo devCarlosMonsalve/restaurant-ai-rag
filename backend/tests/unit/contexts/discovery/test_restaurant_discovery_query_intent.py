@@ -1,4 +1,4 @@
-from app.domain.restaurant_discovery.query_intent import (
+from app.restaurant_discovery.domain.query_intent import (
     asks_for_photos,
     normalize_text,
     unsupported_live_data_notice,

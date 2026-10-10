@@ -158,10 +158,17 @@ but are marked as unverified.
 ## Tool layer
 
 The application layer groups use cases by bounded context.
-`app.application.restaurant_discovery` coordinates restaurant and photo search.
+`app.restaurant_discovery` owns restaurant discovery domain policies,
+application use cases and its PostgreSQL adapter. Its repository port separates
+the use cases from pgvector/query persistence. The previous
+`app.application.restaurant_discovery` and infrastructure import paths remain
+compatibility facades.
 Knowledge/RAG use cases live in `app.knowledge.application`: document retrieval
 and answer generation are separate dependencies, and the RAG use case owns the
 retrieval-to-answer coordination. Its ports are specific to Knowledge.
+Document search and answer DTOs are owned by
+`app.knowledge.application.contracts`; the legacy `app.schemas` module
+re-exports the same classes for existing API, Tool, MCP, and client imports.
 `app.knowledge.infrastructure.postgres` owns the SQLAlchemy/pgvector query,
 while `app.knowledge.infrastructure.generation` owns the LangChain chain and
 Gemini generation adapter.
@@ -207,17 +214,20 @@ keeps route registration, schema declarations, and `get_db` dependency wiring.
 The dependency-free policies cover restaurant-search evidence,
 candidate-photo association, and document text preparation. Intent detection,
 feature matching, and kosher freshness live in
-`app.domain.restaurant_discovery.evidence`; exact-source photo association
-lives in `app.domain.restaurant_discovery.photo_association`; and Unicode
+`app.restaurant_discovery.domain.evidence`; query intent lives in
+`app.restaurant_discovery.domain.query_intent`; exact-source photo association
+lives in `app.restaurant_discovery.domain.photo_association`; and Unicode
 normalization and chunking live in `app.knowledge.domain.text`.
 
 PostgreSQL restaurant and image query implementations live under
 `app.infrastructure.persistence.postgres`; the original `app.restaurant_search`
-and `app.image_search` paths remain compatibility facades. Text, image, and
-OSM ingestion coordination lives in `app.ingestion.application`, with legacy
-imports retained in the root ingestion modules. Knowledge retrieval and
-generation remain in `app.knowledge`; filesystem, model, database, and external
-data clients remain infrastructure. ORM records and API schemas are not
+and `app.image_search` paths remain compatibility facades. The context-specific
+PostgreSQL adapter is in `app.restaurant_discovery.infrastructure.postgres`.
+Text and image ingestion use cases live in `app.ingestion.application`, with
+legacy imports retained in the old paths; OSM ingestion delegates through
+`app.ingestion.composition`. Knowledge retrieval and generation remain in
+`app.knowledge`; filesystem, model, database, and external data clients remain
+infrastructure. ORM records and API schemas are not
 domain entities.
 
 ## Knowledge/RAG generation
@@ -246,7 +256,7 @@ Focused Knowledge/RAG tests, which use fake embeddings, sessions, and model
 responses and do not call Gemini, can be run from `backend` with:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_document_search.py tests\test_rag.py tests\test_application_use_cases.py tests\test_retrieval_tools.py tests\test_rag_evaluation.py tests\test_observability.py tests\test_text_processing.py tests\test_api.py tests\test_mcp_server.py
+.\.venv\Scripts\python.exe -m pytest tests\unit\contexts\knowledge\test_document_search.py tests\unit\contexts\knowledge\test_rag.py tests\unit\application\test_application_use_cases.py tests\contracts\tools\test_retrieval_tools.py tests\evaluation\test_rag_evaluation.py tests\unit\infrastructure\test_observability.py tests\unit\domain\test_text_processing.py tests\contracts\http\test_api.py tests\contracts\mcp\test_mcp_server.py
 ```
 
 ## Restaurant search Agent
@@ -279,7 +289,7 @@ The routing and tool-cycle tests use synthetic LiteLLM responses and do not
 contact Gemini or OpenAI:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_model_routing.py tests\test_restaurant_search_agent.py
+.\.venv\Scripts\python.exe -m pytest tests\unit\infrastructure\test_model_routing.py tests\unit\contexts\discovery\test_restaurant_search_agent.py
 ```
 
 The database session is passed as graph context, never included in the state
@@ -444,7 +454,7 @@ prompt, runnable, message, and parser APIs. The normal tests use a fake Gemini
 client and make no provider calls:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_rag.py
+.\.venv\Scripts\python.exe -m pytest tests\unit\contexts\knowledge\test_rag.py
 ```
 
 The existing `GEMINI_API_KEY` setting still configures the provider through
@@ -614,7 +624,7 @@ The protocol and tool tests use the SDK's in-memory client and mocked Tool
 handlers, so they do not require PostgreSQL or external providers:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_mcp_server.py
+.\.venv\Scripts\python.exe -m pytest tests\contracts\mcp\test_mcp_server.py
 ```
 
 ## A2A server
@@ -687,7 +697,7 @@ The A2A protocol tests use an in-memory ASGI transport and a mocked Agent
 result; they do not require PostgreSQL or call Gemini:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_a2a_server.py
+.\.venv\Scripts\python.exe -m pytest tests\contracts\a2a\test_a2a_server.py
 ```
 
 ### Itinerary planner A2A client
@@ -710,7 +720,7 @@ costs. The client tests instead use the A2A server through an in-memory
 transport and replace its Agent execution with a synthetic result:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_itinerary_planner_client.py
+.\.venv\Scripts\python.exe -m pytest tests\contracts\a2a\test_itinerary_planner_client.py
 ```
 
 The separate `app.itinerary_planner` module builds a deterministic dining draft
@@ -728,7 +738,7 @@ reservations. Its in-memory tests exercise the A2A exchange with synthetic
 candidates and do not call Gemini or PostgreSQL:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_itinerary_planner.py
+.\.venv\Scripts\python.exe -m pytest tests\unit\contexts\planning\test_itinerary_planner.py
 ```
 
 ### Itinerary Planner A2A service
@@ -802,7 +812,7 @@ uses synthetic restaurant candidates; it does not require PostgreSQL or call
 Gemini:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_itinerary_planner_server.py
+.\.venv\Scripts\python.exe -m pytest tests\contracts\a2a\test_itinerary_planner_server.py
 ```
 
 For a terminal client, with both agents running, use:
@@ -818,5 +828,5 @@ Gemini configuration. The client integration tests run the complete chain
 with synthetic candidates:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests\test_itinerary_planner_agent_client.py
+.\.venv\Scripts\python.exe -m pytest tests\contracts\a2a\test_itinerary_planner_agent_client.py
 ```

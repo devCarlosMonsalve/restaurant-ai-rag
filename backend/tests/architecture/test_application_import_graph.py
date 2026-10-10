@@ -77,3 +77,35 @@ def test_app_module_import_graph_is_acyclic() -> None:
 
     for module in graph:
         visit(module)
+
+
+def test_context_applications_do_not_depend_on_infrastructure_or_global_schemas() -> None:
+    modules = _app_modules()
+    forbidden = (
+        "sqlalchemy",
+        "app.database",
+        "app.infrastructure",
+        "app.models",
+        "app.embeddings",
+        "app.image_embeddings",
+        "app.schemas",
+    )
+    context_applications = (
+        "app.restaurant_discovery.application.",
+        "app.knowledge.application.",
+    )
+    violations = []
+    for module, path in modules.items():
+        if not module.startswith(context_applications):
+            continue
+        for dependency in _dependencies(module, path, modules):
+            if any(
+                dependency == prefix or dependency.startswith(f"{prefix}.")
+                for prefix in forbidden
+            ):
+                violations.append(f"{path}: {dependency}")
+
+    assert not violations, (
+        "A context application depends on infrastructure or global schemas:\n"
+        + "\n".join(sorted(violations))
+    )

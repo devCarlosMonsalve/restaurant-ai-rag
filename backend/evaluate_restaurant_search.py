@@ -12,7 +12,7 @@ from app.embeddings import EMBEDDING_DIMENSIONS, GEMINI_EMBEDDING_MODEL
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.restaurant_search import search_osm_places_by_text
-from evaluation_utils import (
+from evaluation.utils import (
     build_run_metadata,
     fingerprint_rows,
     write_evaluation_report,

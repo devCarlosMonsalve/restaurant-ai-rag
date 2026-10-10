@@ -2,7 +2,7 @@ from collections import Counter
 from datetime import date
 from typing import Any, Iterable
 
-from app.domain.restaurant_discovery.evidence import KOSHER_MAX_AGE_DAYS
+from app.restaurant_discovery.domain.evidence import KOSHER_MAX_AGE_DAYS
 from app.open_data_sources import OSM_FEATURE_TAGS
 
 

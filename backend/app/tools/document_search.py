@@ -6,7 +6,10 @@ from app.knowledge.application.search_documents import (
 from app.knowledge.infrastructure.postgres.retriever import (
     PostgresDocumentRetriever,
 )
-from app.schemas import DocumentSearchRequest, DocumentSearchResult
+from app.knowledge.application.contracts import (
+    DocumentSearchRequest,
+    DocumentSearchResult,
+)
 
 
 def search_documents(

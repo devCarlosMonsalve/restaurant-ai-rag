@@ -1,12 +1,15 @@
 from sqlalchemy.orm import Session
 
-from app.application.restaurant_discovery import (
+from app.restaurant_discovery.application.service import (
     search_restaurant_photos as search_restaurant_photos_use_case,
 )
-from app.infrastructure.persistence.postgres.restaurant_discovery import (
+from app.restaurant_discovery.infrastructure.postgres import (
     PostgresRestaurantDiscoveryAdapter,
 )
-from app.schemas import ImageSearchRequest, ImageSearchResult
+from app.restaurant_discovery.application.contracts import (
+    ImageSearchRequest,
+    ImageSearchResult,
+)
 
 
 def search_restaurant_photos(

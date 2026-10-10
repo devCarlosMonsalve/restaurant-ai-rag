@@ -1,5 +1,5 @@
-from app.application.ports import RestaurantDiscoveryPort
-from app.application.restaurant_discovery import search_restaurant_photos
+from app.restaurant_discovery.application.ports import RestaurantDiscoveryPort
+from app.restaurant_discovery.application.service import search_restaurant_photos
 from app.image_presentation import image_file_url
 from app.knowledge.application.answer_question import answer_from_documents
 from app.knowledge.application.ports import (
@@ -7,8 +7,8 @@ from app.knowledge.application.ports import (
     GroundedAnswerGenerator,
 )
 from app.observability import traced_span
+from app.restaurant_discovery.application.contracts import ImageSearchRequest
 from app.schemas import (
-    ImageSearchRequest,
     RagAnswerWithPhotosResponse,
     RagPhoto,
     RagQuestionWithPhotosRequest,

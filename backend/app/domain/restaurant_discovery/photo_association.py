@@ -1,5 +1,7 @@
-def is_verified_photo_association(
-    candidate_source_url: str,
-    photo_source_url: str | None,
-) -> bool:
-    return bool(photo_source_url) and photo_source_url == candidate_source_url
+"""Compatibility export for exact Restaurant Discovery photo association."""
+
+from app.restaurant_discovery.domain.photo_association import (
+    is_verified_photo_association,
+)
+
+__all__ = ["is_verified_photo_association"]

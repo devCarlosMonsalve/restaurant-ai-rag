@@ -9,7 +9,7 @@ from app.knowledge.infrastructure.generation.answer_chain import (
 from app.knowledge.infrastructure.postgres.retriever import (
     PostgresDocumentRetriever,
 )
-from app.schemas import RagAnswerResponse, RagQuestionRequest
+from app.knowledge.application.contracts import RagAnswerResponse, RagQuestionRequest
 
 
 def answer_from_documents(

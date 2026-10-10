@@ -2,7 +2,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.embeddings import embed_search_query
-from app.domain.restaurant_discovery.evidence import (
+from app.restaurant_discovery.domain.evidence import (
     SearchEvidenceRequest,
     detect_search_evidence,
     matches_feature_requirements,
@@ -13,7 +13,10 @@ from app.infrastructure.persistence.postgres.evidence_queries import (
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
 from app.place_filters import cuisine_filter
-from app.schemas import OsmRestaurantSearchResponse, OsmRestaurantSearchResult
+from app.restaurant_discovery.application.contracts import (
+    OsmRestaurantSearchResponse,
+    OsmRestaurantSearchResult,
+)
 
 OSM_ATTRIBUTION = "© OpenStreetMap contributors"
 OSM_ATTRIBUTION_URL = "https://www.openstreetmap.org/copyright"
