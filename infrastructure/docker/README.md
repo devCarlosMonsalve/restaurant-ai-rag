@@ -1,49 +1,78 @@
-# PostgreSQL con pgvector
+# Local infrastructure
 
-Esta configuración inicia PostgreSQL 16 con la extensión `pgvector` y conserva los datos en el volumen Docker nombrado `restaurant-ai-postgres-data`.
+This directory contains Docker Compose configurations for local PostgreSQL
+with pgvector, optional Phoenix tracing, and a separate disposable database for
+integration tests.
 
-## Arranque
+## PostgreSQL with pgvector
 
-1. Copia el archivo de variables y define una contraseña segura:
+The main Compose service uses PostgreSQL 16 with the `pgvector` image. Create
+the local `.env` file from the checked-in template if you do not already have
+one:
 
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-2. Desde esta carpeta, inicia la base de datos:
-
-   ```powershell
-   docker compose up -d
-   ```
-
-3. Comprueba que el servicio esté listo:
-
-   ```powershell
-   docker compose ps
-   ```
-
-La cadena de conexión por defecto es:
-
-```text
-postgresql://restaurant_ai:<POSTGRES_PASSWORD>@localhost:5432/restaurant_ai
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-El script `init-db.sql` habilita `vector` automáticamente al crear un volumen nuevo. Puedes verificarlo con:
+Review `.env` and replace any password placeholder with a strong local
+password. The template defines the Compose variables `POSTGRES_DB`,
+`POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_PORT`. Keep `.env` local
+and do not commit real credentials. The application connection string must
+use the same database, user, password, and port.
+
+From this directory, start the database and check its status:
+
+```powershell
+docker compose up -d
+docker compose ps
+```
+
+The `init-db.sql` script enables the `vector` extension when Docker creates a
+new database volume. Verify it with:
 
 ```powershell
 docker compose exec postgres psql -U restaurant_ai -d restaurant_ai -c "\dx"
 ```
 
-## Persistencia y mantenimiento
+The database container does not apply application migrations. From `backend`,
+run `.\.venv\Scripts\python.exe -m alembic upgrade head` after the database is
+available.
 
-Los datos permanecen al detener o recrear el contenedor porque Docker los guarda en el volumen `restaurant-ai-postgres-data`.
+## Optional services
+
+Start Phoenix alongside PostgreSQL when local tracing is needed:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.phoenix.yml up -d
+```
+
+Phoenix is exposed on `127.0.0.1:6006`. Enable tracing in the backend
+environment to export spans. Starting this container alone does not verify
+that the backend successfully exported traces.
+
+The integration-test database uses PostgreSQL with pgvector on host port
+`55432` and a temporary filesystem-backed data directory:
+
+```powershell
+docker compose -f docker-compose.integration.yml up -d
+docker compose -f docker-compose.integration.yml ps
+```
+
+Its data is disposable and is lost when the container is removed.
+
+## Persistence and cleanup
+
+The main database stores data in the named Docker volume
+`restaurant-ai-postgres-data`. Stopping and recreating the container preserves
+that volume:
 
 ```powershell
 docker compose down
 docker compose up -d
 ```
 
-No ejecutes `docker compose down --volumes` salvo que quieras eliminar permanentemente la base de datos. Para inspeccionar los volúmenes:
+Do not run `docker compose down --volumes` unless you intend to permanently
+delete the local database. Inspect Docker volumes with:
 
 ```powershell
 docker volume ls

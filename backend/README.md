@@ -1,5 +1,65 @@
 # Backend
 
+Restaurant AI RAG's Python service: a FastAPI API and modular application for
+restaurant discovery, document retrieval and RAG, image search, ingestion, and
+local Agent, MCP, and A2A integrations.
+
+## Quick start
+
+PostgreSQL with pgvector is required for database-backed endpoints and ingestion.
+Configure and start it using the [Docker infrastructure guide](../infrastructure/docker/README.md).
+From this directory, create the Python environment, install the development
+requirements, copy the environment template, configure the database and model
+provider values, then migrate and start the API.
+
+PowerShell:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+# Edit .env and set the values needed for your local setup.
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+macOS/Linux:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+if [ ! -f .env ]; then cp .env.example .env; fi
+# Edit .env and set the values needed for your local setup.
+.venv/bin/python -m alembic upgrade head
+.venv/bin/python -m uvicorn app.main:app --reload
+```
+
+The API listens at `http://127.0.0.1:8000`; use `/health` for a simple
+health check and `/docs` for interactive API documentation. Restaurant search,
+document embeddings, and answer generation need the relevant database and
+provider configuration. Provider-backed requests may incur charges.
+
+## Guides
+
+- [Architecture, modules, dependencies, and process diagrams](./ARCHITECTURE.md)
+- [Restaurant and image search](#text-to-image-search-with-openclip)
+- [Document retrieval and RAG](#knowledgerag-generation)
+- [Agent and Tools](#restaurant-search-agent)
+- [Photo Workflow](#restaurant-photo-workflow)
+- [MCP server](#mcp-server)
+- [A2A servers](#a2a-server)
+- [Image-search evaluation](#evaluate-image-search)
+- [Document and RAG evaluation](#evaluate-document-retrieval-and-rag-answers)
+
+Run the backend test suite from this directory with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests -q
+```
+
+Some evaluation commands call external providers; their requirements and
+potential costs are described alongside each command below.
+
 ## Text-to-image search with OpenCLIP
 
 Start the API from this directory, then open `http://127.0.0.1:8000` in a
