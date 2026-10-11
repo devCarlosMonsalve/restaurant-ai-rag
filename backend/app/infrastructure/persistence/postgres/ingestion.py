@@ -9,11 +9,11 @@ from app.domain.osm_place import osm_searchable_metadata_changed
 from app.ingestion.application.ports import (
     DocumentChunkRecord,
     ImageEmbeddingRecord,
+    OSMPlaceRecord,
 )
 from app.models.document_chunk import DocumentChunk
 from app.models.image_embedding import ImageEmbedding
 from app.models.osm_place import OsmPlace
-from app.infrastructure.external_data.open_data_sources import OSMRestaurant
 
 
 class PostgresDocumentChunkStore:
@@ -81,55 +81,56 @@ class PostgresImageEmbeddingStore:
         return image.id
 
 
-def upsert_osm_place(
-    restaurant: OSMRestaurant,
-    session: Session,
-) -> OsmPlace:
-    place = session.scalar(
-        select(OsmPlace).where(
-            OsmPlace.osm_type == restaurant.osm_type,
-            OsmPlace.osm_id == restaurant.osm_id,
-        )
-    )
-    if place is None:
-        place = OsmPlace(
-            osm_type=restaurant.osm_type,
-            osm_id=restaurant.osm_id,
-            name=restaurant.name,
-            city=restaurant.city,
-            cuisine=restaurant.cuisine,
-            location=restaurant.location,
-            latitude=restaurant.latitude,
-            longitude=restaurant.longitude,
-            features=list(restaurant.features),
-            wikimedia_commons=restaurant.wikimedia_commons,
-            source_url=restaurant.source_url,
-        )
-        session.add(place)
-    else:
-        searchable_metadata_changed = osm_searchable_metadata_changed(
-            current_name=place.name,
-            current_city=place.city,
-            current_cuisine=place.cuisine,
-            current_location=place.location,
-            current_features=place.features,
-            new_name=restaurant.name,
-            new_city=restaurant.city,
-            new_cuisine=restaurant.cuisine,
-            new_location=restaurant.location,
-            new_features=restaurant.features,
-        )
-        place.name = restaurant.name
-        place.city = restaurant.city
-        place.cuisine = restaurant.cuisine
-        place.location = restaurant.location
-        place.latitude = restaurant.latitude
-        place.longitude = restaurant.longitude
-        place.features = list(restaurant.features)
-        place.wikimedia_commons = restaurant.wikimedia_commons
-        place.source_url = restaurant.source_url
-        if searchable_metadata_changed:
-            place.embedding = None
+class PostgresOSMPlaceStore:
+    def __init__(self, session: Session) -> None:
+        self._session = session
 
-    session.flush()
-    return place
+    def upsert(self, record: OSMPlaceRecord) -> UUID:
+        place = self._session.scalar(
+            select(OsmPlace).where(
+                OsmPlace.osm_type == record.osm_type,
+                OsmPlace.osm_id == record.osm_id,
+            )
+        )
+        if place is None:
+            place = OsmPlace(
+                osm_type=record.osm_type,
+                osm_id=record.osm_id,
+                name=record.name,
+                city=record.city,
+                cuisine=record.cuisine,
+                location=record.location,
+                latitude=record.latitude,
+                longitude=record.longitude,
+                features=list(record.features),
+                wikimedia_commons=record.wikimedia_commons,
+                source_url=record.source_url,
+            )
+            self._session.add(place)
+        else:
+            searchable_metadata_changed = osm_searchable_metadata_changed(
+                current_name=place.name,
+                current_city=place.city,
+                current_cuisine=place.cuisine,
+                current_location=place.location,
+                current_features=place.features,
+                new_name=record.name,
+                new_city=record.city,
+                new_cuisine=record.cuisine,
+                new_location=record.location,
+                new_features=record.features,
+            )
+            place.name = record.name
+            place.city = record.city
+            place.cuisine = record.cuisine
+            place.location = record.location
+            place.latitude = record.latitude
+            place.longitude = record.longitude
+            place.features = list(record.features)
+            place.wikimedia_commons = record.wikimedia_commons
+            place.source_url = record.source_url
+            if searchable_metadata_changed:
+                place.embedding = None
+
+        self._session.flush()
+        return place.id

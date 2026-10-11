@@ -39,8 +39,11 @@ def test_osm_place_upsert_updates_existing_place(
     stored_places = db_session.scalars(select(OsmPlace)).all()
 
     assert updated_place.id == first_place.id
+    assert updated_place.osm_type == "node"
+    assert updated_place.osm_id == 123
     assert updated_place.name == "Updated Name"
     assert updated_place.cuisine == "italian"
     assert updated_place.features == ["Mesas al aire libre: disponible"]
+    assert updated_place.source_url == "https://www.openstreetmap.org/node/123"
     assert updated_place.embedding is None
     assert len(stored_places) == 1

@@ -31,8 +31,16 @@ def _assemble_dining_draft(
     request: ItineraryPlanningRequest,
     discovery: RestaurantSearchEvidence,
 ) -> ItineraryDiningDraft:
-    selected = discovery.restaurants[: request.day_count]
-    alternatives = discovery.restaurants[request.day_count :]
+    unique_restaurants: list[RestaurantEvidenceCandidate] = []
+    seen_source_urls: set[str] = set()
+    for restaurant in discovery.restaurants:
+        if restaurant.source_url in seen_source_urls:
+            continue
+        seen_source_urls.add(restaurant.source_url)
+        unique_restaurants.append(restaurant)
+
+    selected = unique_restaurants[: request.day_count]
+    alternatives = unique_restaurants[request.day_count :]
     days = [
         ItineraryDaySuggestion(
             day_number=day_number,

@@ -1,8 +1,10 @@
 import asyncio
 
 import pytest
+from pydantic import ValidationError
 
 from app.itinerary_planning.application.contracts import (
+    ItineraryDaySuggestion,
     RestaurantEvidenceCandidate,
     RestaurantSearchEvidence,
 )
@@ -36,6 +38,74 @@ class StubRestaurantEvidenceProvider:
     async def search_restaurants(self, query: str) -> RestaurantSearchEvidence:
         self.queries.append(query)
         return self.evidence
+
+
+def test_itinerary_dining_draft_accepts_consistent_payload() -> None:
+    first = make_candidate("Casa Verde", 1)
+    second = make_candidate("Huerta Viva", 2)
+    draft = ItineraryDiningDraft.model_validate(
+        {
+            "query": "vegetarian restaurants",
+            "requested_days": 2,
+            "days": [
+                ItineraryDaySuggestion(day_number=1, restaurant=first).model_dump()
+            ],
+            "alternatives": [second.model_dump()],
+            "unfilled_days": 1,
+            "research_answer": "Synthetic evidence.",
+        }
+    )
+
+    assert draft.requested_days == 2
+    assert draft.unfilled_days == 1
+    assert draft.days[0].day_number == 1
+
+
+@pytest.mark.parametrize(
+    "invalid_change",
+    [
+        ("requested_days", 0),
+        ("requested_days", True),
+        ("unfilled_days", -1),
+        ("unfilled_days", 0),
+        ("day_number", 0),
+        ("day_number", 2),
+        ("duplicate_candidate", True),
+        ("too_many_days", True),
+    ],
+)
+def test_itinerary_dining_draft_rejects_inconsistent_payloads(
+    invalid_change: tuple[str, object],
+) -> None:
+    first = make_candidate("Casa Verde", 1)
+    second = make_candidate("Huerta Viva", 2)
+    payload: dict[str, object] = {
+        "query": "vegetarian restaurants",
+        "requested_days": 2,
+        "days": [
+            {"day_number": 1, "restaurant": first.model_dump()},
+        ],
+        "alternatives": [second.model_dump()],
+        "unfilled_days": 1,
+        "research_answer": "Synthetic evidence.",
+    }
+    field, value = invalid_change
+
+    if field == "day_number":
+        payload["days"] = [{"day_number": value, "restaurant": first.model_dump()}]
+    elif field == "duplicate_candidate":
+        payload["alternatives"] = [first.model_dump()]
+    elif field == "too_many_days":
+        payload["days"] = [
+            {"day_number": 1, "restaurant": first.model_dump()},
+            {"day_number": 2, "restaurant": second.model_dump()},
+        ]
+        payload["unfilled_days"] = 0
+    else:
+        payload[field] = value
+
+    with pytest.raises(ValidationError):
+        ItineraryDiningDraft.model_validate(payload)
 
 
 def test_planner_assigns_ranked_candidates_once_per_day() -> None:
@@ -73,6 +143,35 @@ def test_planner_assigns_ranked_candidates_once_per_day() -> None:
         "Synthetic candidates from the restaurant Agent."
     )
     assert "routes" in draft.evidence_notice
+
+
+def test_planner_deduplicates_restaurants_by_source_url_in_retrieval_order() -> None:
+    candidates = [
+        make_candidate("Casa Verde", 1),
+        make_candidate("Duplicate Casa Verde", 1),
+        make_candidate("Huerta Viva", 2),
+        make_candidate("Ecocentro", 3),
+    ]
+    provider = StubRestaurantEvidenceProvider(
+        RestaurantSearchEvidence(
+            answer="Synthetic candidates.",
+            restaurants=candidates,
+        )
+    )
+
+    draft = asyncio.run(
+        plan_itinerary_dining(
+            "vegetarian restaurants in Madrid",
+            day_count=2,
+            evidence_provider=provider,
+        )
+    )
+
+    assert [day.restaurant.name for day in draft.days] == [
+        "Casa Verde",
+        "Huerta Viva",
+    ]
+    assert [candidate.name for candidate in draft.alternatives] == ["Ecocentro"]
 
 
 def test_planner_leaves_days_unfilled_when_evidence_is_insufficient(

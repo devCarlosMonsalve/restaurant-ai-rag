@@ -31,6 +31,9 @@ def ingest_text_document(
         raise ValueError("The text file contains no content")
 
     embeddings = embedder(chunks, document_title=text_file.stem)
+    if len(embeddings) != len(chunks):
+        raise ValueError("The embedding count must match the number of text chunks")
+
     document_id = uuid4()
     records = [
         DocumentChunkRecord(

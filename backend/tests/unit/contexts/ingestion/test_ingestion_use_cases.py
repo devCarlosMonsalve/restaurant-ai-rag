@@ -6,10 +6,12 @@ import pytest
 from app.domain.osm_place import osm_searchable_metadata_changed
 from app.ingestion.application.documents_usecase import ingest_text_document
 from app.ingestion.application.images_usecase import ingest_image
+from app.ingestion.application.osm import upsert_osm_place as upsert_osm_place_usecase
 from app.ingestion.application.ports import (
     DocumentChunkRecord,
     ImageEmbeddingRecord,
     ImageSourceMetadata,
+    OSMPlaceRecord,
 )
 
 
@@ -58,6 +60,47 @@ def test_document_use_case_coordinates_chunking_embedding_and_storage(
     assert [record.embedding for record in records] == [[0.1], [0.2]]
 
 
+@pytest.mark.parametrize("embedding_count", [1, 3])
+def test_document_use_case_rejects_embedding_cardinality_mismatch_before_storage(
+    tmp_path: Path,
+    embedding_count: int,
+) -> None:
+    store_calls: list[list[DocumentChunkRecord]] = []
+
+    class Store:
+        def save_all(self, records: list[DocumentChunkRecord]) -> None:
+            store_calls.append(records)
+
+    def read_chunks(
+        _path: Path,
+        *,
+        chunk_size_words: int,
+        overlap_words: int,
+    ) -> list[str]:
+        assert chunk_size_words == 500
+        assert overlap_words == 75
+        return ["first chunk", "second chunk"]
+
+    def embed_chunks(
+        chunks: list[str],
+        *,
+        document_title: str,
+    ) -> list[list[float]]:
+        assert chunks == ["first chunk", "second chunk"]
+        assert document_title == "menu"
+        return [[float(index)] for index in range(embedding_count)]
+
+    with pytest.raises(ValueError, match="embedding count must match"):
+        ingest_text_document(
+            tmp_path / "menu.txt",
+            reader=read_chunks,
+            embedder=embed_chunks,
+            store=Store(),
+        )
+
+    assert store_calls == []
+
+
 def test_document_use_case_does_not_store_when_embedding_fails(tmp_path: Path) -> None:
     saved: list[DocumentChunkRecord] = []
 
@@ -94,6 +137,34 @@ def test_document_use_case_does_not_store_when_embedding_fails(tmp_path: Path) -
         )
 
     assert saved == []
+
+
+def test_osm_use_case_delegates_internal_record_to_store() -> None:
+    record = OSMPlaceRecord(
+        osm_type="node",
+        osm_id=123,
+        name="Casa Verde",
+        city="Madrid",
+        cuisine="vegetarian",
+        location="Calle Mayor 1",
+        latitude=40.4,
+        longitude=-3.7,
+        wikimedia_commons="Category:Casa Verde",
+        features=("outdoor_seating",),
+        source_url="https://www.openstreetmap.org/node/123",
+    )
+    expected_id = UUID("11111111-1111-1111-1111-111111111111")
+    stored_records: list[OSMPlaceRecord] = []
+
+    class Store:
+        def upsert(self, value: OSMPlaceRecord) -> UUID:
+            stored_records.append(value)
+            return expected_id
+
+    result = upsert_osm_place_usecase(record, store=Store())
+
+    assert result == expected_id
+    assert stored_records == [record]
 
 
 def test_image_use_case_resolves_path_and_preserves_provenance(

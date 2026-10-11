@@ -38,6 +38,25 @@ class DocumentChunkStore(Protocol):
 
 
 @dataclass(frozen=True)
+class OSMPlaceRecord:
+    osm_type: str
+    osm_id: int
+    name: str
+    city: str
+    cuisine: str | None
+    location: str | None
+    latitude: float
+    longitude: float
+    wikimedia_commons: str | None
+    features: tuple[str, ...]
+    source_url: str
+
+
+class OSMPlaceStore(Protocol):
+    def upsert(self, record: OSMPlaceRecord) -> UUID: ...
+
+
+@dataclass(frozen=True)
 class ImageSourceMetadata:
     source_url: str
     license_name: str

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -127,6 +128,61 @@ def test_client_surfaces_a_sanitized_planner_failure(
         delegate_with_in_process_agents("restaurants in Madrid", 1)
 
     assert "private downstream details" not in str(error.value)
+
+
+def test_client_rejects_semantically_invalid_external_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_payload = {
+        "query": "restaurants in Madrid",
+        "requested_days": 1,
+        "days": [
+            {
+                "day_number": 2,
+                "restaurant": {
+                    "name": "Casa Verde",
+                    "city": "Madrid",
+                    "cuisine": "vegetarian",
+                    "location": "Calle Mayor 1",
+                    "latitude": 40.4168,
+                    "longitude": -3.7038,
+                    "features": [],
+                    "source_url": "https://www.openstreetmap.org/node/123",
+                    "attribution": "© OpenStreetMap contributors",
+                    "attribution_url": "https://www.openstreetmap.org/copyright",
+                    "similarity": 0.82,
+                },
+            }
+        ],
+        "alternatives": [],
+        "unfilled_days": 0,
+        "research_answer": "Synthetic evidence.",
+    }
+
+    async def invalid_plan(
+        _query: str,
+        _day_count: int,
+        *,
+        evidence_provider: object,
+    ) -> object:
+        del _query, _day_count, evidence_provider
+        return SimpleNamespace(
+            days=[object()],
+            unfilled_days=0,
+            model_dump=lambda *, mode: invalid_payload,
+        )
+
+    monkeypatch.setattr(
+        itinerary_planner_server,
+        "plan_itinerary_dining",
+        invalid_plan,
+    )
+
+    with pytest.raises(
+        ItineraryPlannerDelegationError,
+        match="invalid dining draft",
+    ):
+        delegate_with_in_process_agents("restaurants in Madrid", 1)
 
 
 def test_client_rejects_invalid_request_before_network_call() -> None:

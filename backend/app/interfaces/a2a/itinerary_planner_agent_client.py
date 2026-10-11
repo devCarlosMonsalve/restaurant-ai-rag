@@ -6,7 +6,10 @@ from a2a.types import Role, SendMessageRequest, Task, TaskState
 from google.protobuf.json_format import MessageToDict
 from pydantic import ValidationError
 
-from app.itinerary_planning.application.planner import ItineraryDiningDraft, ItineraryPlanningRequest
+from app.itinerary_planning.application.contracts import (
+    ItineraryDiningDraft,
+    ItineraryPlanningRequest,
+)
 from app.interfaces.a2a.itinerary_planner_server import ITINERARY_DRAFT_ARTIFACT
 
 DEFAULT_ITINERARY_PLANNER_AGENT_URL = "http://127.0.0.1:8002"

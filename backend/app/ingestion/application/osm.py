@@ -1,5 +1,13 @@
-"""Compatibility facade; use the PostgreSQL adapter through app.ingestion."""
+"""Application use case for updating an OSM place."""
 
-from app.ingestion.composition import upsert_osm_place
+from uuid import UUID
 
-__all__ = ["upsert_osm_place"]
+from app.ingestion.application.ports import OSMPlaceRecord, OSMPlaceStore
+
+
+def upsert_osm_place(
+    place: OSMPlaceRecord,
+    *,
+    store: OSMPlaceStore,
+) -> UUID:
+    return store.upsert(place)
