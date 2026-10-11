@@ -111,7 +111,7 @@ observability limitation are recorded in the [README](./README.md).
 
 ```mermaid
 flowchart TD
-  caller[HTTP client] --> route[POST /restaurants/osm/search<br/>main.search_osm_restaurants]
+  caller[HTTP client] --> route[POST /restaurants/osm/search<br/>interfaces.http.restaurants.search_osm_restaurants]
   route --> service[restaurant_discovery.application.service.search_restaurants]
   route --> adapter[PostgresRestaurantDiscoveryAdapter]
   service --> adapter
@@ -130,11 +130,11 @@ flowchart TD
   route --> caller
 ```
 
-`main.search_osm_restaurants` supplies the database-backed adapter. The query
-adapter obtains a Gemini query embedding, applies supported feature and exact
-filter predicates, orders candidates by pgvector distance, and returns the
-Discovery response contract. The Tool and MCP entrypoints reuse the same
-application service through their adapters.
+`interfaces.http.restaurants.search_osm_restaurants` supplies the
+database-backed adapter. The query adapter obtains a Gemini query embedding,
+applies supported feature and exact filter predicates, orders candidates by
+pgvector distance, and returns the Discovery response contract. The Tool and
+MCP entrypoints reuse the same application service through their adapters.
 
 #### 2. Restaurant search through the Agent and Tools
 
@@ -172,7 +172,7 @@ Discovery application service.
 
 ```mermaid
 flowchart TD
-  caller[HTTP /documents/ask<br/>or answer_from_documents Tool] --> composition[main.ask_documents<br/>or Tool adapter]
+  caller[HTTP /documents/ask<br/>or answer_from_documents Tool] --> composition[interfaces.http.knowledge.ask_documents<br/>or Tool adapter]
   composition --> usecase[application.document_answer.answer_from_documents_with_photos]
   usecase --> answer[knowledge.application.answer_question.answer_from_documents]
   answer --> retrieve[knowledge.application.search_documents<br/>or DocumentRetriever port]
@@ -530,10 +530,11 @@ business invariant currently exists.
 | `app/agents/{__init__.py,schemas.py,restaurant_search_agent.py}` | Keep public Agent schemas unchanged. `restaurant_search_agent.py` remains the LangGraph/model/tool orchestration boundary; registry Tool calls use existing application operations, while candidate-scoped photo search calls the Discovery application service directly and constructs its PostgreSQL adapter in the Agent path. |
 | `app/workflows/{__init__.py,schemas.py,restaurant_photo_search.py}` | Keep workflow DTOs and graph boundary. The photo workflow coordinates Discovery application operations and scoped image lookup; it constructs the PostgreSQL adapter in graph nodes and reuses the exact source-URL domain policy. |
 | `app/tools/{__init__.py,registry.py,restaurant_search.py,restaurant_photos.py,document_search.py,document_answer.py}` | Keep the registry and thin adapters. MCP and the model Agent share names, input schemas, hidden arguments, result serialization, and stable error categories. |
-| `app/interfaces/{http,mcp,a2a}` | Group protocol-specific schemas, servers, and clients by delivery mechanism. Keep endpoint paths, MCP tool schemas, A2A agent cards, artifacts, and task behavior unchanged. |
+| `app/interfaces/http/{restaurants.py,knowledge.py,agents.py,workflows.py,images.py}` | HTTP routers group handlers by capability and delegate to the existing use cases, Agent, and Workflow. Keep request/response schemas and public route behavior unchanged. |
+| `app/interfaces/{http,mcp,a2a}` | Group protocol-specific schemas, servers, clients, and HTTP routers by delivery mechanism. Keep endpoint paths, MCP tool schemas, A2A agent cards, artifacts, and task behavior unchanged. |
 | `app/itinerary_planning/{application,infrastructure/a2a}` | Keep the deterministic itinerary-draft use case separate from the A2A client adapter. It remains a small application capability, not an artificial domain aggregate. |
 | `app/presentation/image_urls.py` | Keep safe local-image URL mapping out of the package root; preserve the existing response URL format. |
-| `app/main.py` | Keep the stable ASGI entry point and explicit FastAPI composition. Launch remains `uvicorn app.main:app`; no public route or response contract changes. |
+| `app/main.py` | Keep the stable ASGI entry point, tracing lifespan, health endpoint, and router composition. Feature handlers live in `app/interfaces/http`. Launch remains `uvicorn app.main:app`; no public route or response contract changes. |
 | `app/schemas.py` | Keep temporarily as a compatibility re-export; canonical aggregation is in `app/interfaces/http/schemas.py`, while application DTO definitions live with their application services. |
 
 Ingestion document/image/OSM use cases depend on typed application ports, while
@@ -549,7 +550,7 @@ contracts would require preserving CLI and external integrations.
 | Current file or group | Responsibility / category | Decision | Reason and validation |
 | --- | --- | --- | --- |
 | `__init__.py` | Python package marker | Keep | Required package path; no behavior. |
-| `main.py` | FastAPI ASGI entry point, routes, and explicit dependency composition | Keep as the stable ASGI entry point; catalog endpoints inject the application port and delegate. | `uvicorn app.main:app`, API tests, and `get_db` overrides depend on it. Validate `test_api.py`; route paths, response models, ordering, and status codes remain unchanged. |
+| `main.py` | FastAPI ASGI entry point, tracing lifespan, health check, and HTTP router composition | Keep as the stable ASGI entry point; route handlers live in `app/interfaces/http` and delegate to application capabilities. | `uvicorn app.main:app`, API tests, and `get_db` overrides depend on it. Validate `test_api.py`; route paths, response models, ordering, and status codes remain unchanged. |
 | `a2a_server.py`, `itinerary_planner_server.py`, `itinerary_planner_client.py`, `itinerary_planner_agent_client.py` | A2A server/client adapters | Keep as protocol/import entry points. | Agent cards, artifact names, JSON parts, and client imports are contracts; validate with the four A2A test modules. |
 | `mcp_server.py`, `mcp_schemas.py` | MCP delivery adapter and public MCP DTOs | Keep as protocol/import entry points. | Stdio launch and public schemas are compatibility boundaries; validate with `test_mcp_server.py`. |
 | `schemas.py` | Remaining shared FastAPI/Tool request and response DTOs | Keep as a compatibility aggregator; Discovery contracts are owned by `restaurant_discovery.application.contracts`, Knowledge search/answer contracts by `knowledge.application.contracts`, and both are re-exported here. | Preserves existing schema import paths and class identity while establishing context ownership. Validate API, Tool, MCP, and Agent contracts. |

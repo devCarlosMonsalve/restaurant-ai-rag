@@ -177,7 +177,7 @@ def test_image_search_endpoint_returns_matches(
         return expected_results
 
     monkeypatch.setattr(
-        "app.main.search_restaurant_photos_use_case",
+        "app.interfaces.http.images.search_restaurant_photos_use_case",
         fake_search,
     )
     response = client.post(

@@ -37,7 +37,7 @@ def test_commons_image_route_serves_only_files_from_image_directory(
 ) -> None:
     image_path = tmp_path / "commons-photo.jpg"
     image_path.write_bytes(b"test image")
-    monkeypatch.setattr("app.main.COMMONS_IMAGES_DIR", tmp_path)
+    monkeypatch.setattr("app.interfaces.http.images.COMMONS_IMAGES_DIR", tmp_path)
 
     response = client.get("/images/files/commons-photo.jpg")
     missing_response = client.get("/images/files/missing.jpg")
@@ -163,7 +163,10 @@ def test_osm_restaurant_search_returns_semantic_matches(
         )
         return expected
 
-    monkeypatch.setattr("app.main.search_restaurants_use_case", fake_search)
+    monkeypatch.setattr(
+        "app.interfaces.http.restaurants.search_restaurants_use_case",
+        fake_search,
+    )
 
     response = client.post(
         "/restaurants/osm/search",
@@ -207,7 +210,10 @@ def test_document_search_returns_ranked_chunks(
         calls["top_k"] = request.top_k
         return expected_results
 
-    monkeypatch.setattr("app.main.search_documents_use_case", fake_search)
+    monkeypatch.setattr(
+        "app.interfaces.http.knowledge.search_documents_use_case",
+        fake_search,
+    )
 
     response = client.post(
         "/documents/search",
@@ -275,7 +281,10 @@ def test_ask_documents_returns_answer_and_sources(
         calls["has_restaurant_repository"] = restaurant_repository is not None
         return expected_response
 
-    monkeypatch.setattr("app.main.answer_documents_use_case", fake_answer)
+    monkeypatch.setattr(
+        "app.interfaces.http.knowledge.answer_documents_use_case",
+        fake_answer,
+    )
 
     response = client.post(
         "/documents/ask",
@@ -331,7 +340,10 @@ def test_restaurant_search_agent_endpoint_injects_database_session(
             ],
         )
 
-    monkeypatch.setattr("app.main.run_restaurant_search_agent", fake_agent)
+    monkeypatch.setattr(
+        "app.interfaces.http.agents.run_restaurant_search_agent",
+        fake_agent,
+    )
 
     response = client.post(
         "/agents/restaurant-search",
@@ -377,7 +389,10 @@ def test_restaurant_search_agent_endpoint_surfaces_model_failure(
     def failing_agent(query: str, session: Session) -> RestaurantSearchAgentResponse:
         raise RestaurantSearchAgentError("Gemini unavailable")
 
-    monkeypatch.setattr("app.main.run_restaurant_search_agent", failing_agent)
+    monkeypatch.setattr(
+        "app.interfaces.http.agents.run_restaurant_search_agent",
+        failing_agent,
+    )
 
     response = client.post(
         "/agents/restaurant-search",

@@ -366,7 +366,10 @@ def test_workflow_endpoint_injects_session_and_returns_result(
         calls["session"] = session
         return expected
 
-    monkeypatch.setattr("app.main.run_restaurant_photo_workflow", fake_workflow)
+    monkeypatch.setattr(
+        "app.interfaces.http.workflows.run_restaurant_photo_workflow",
+        fake_workflow,
+    )
     response = client.post(
         "/workflows/restaurant-photo-search",
         json={
