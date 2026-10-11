@@ -5,7 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.domain.osm_place import osm_searchable_metadata_changed
+from app.restaurant_discovery.domain.osm_place import (
+    osm_searchable_metadata_changed,
+)
 from app.ingestion.application.ports import (
     DocumentChunkRecord,
     ImageEmbeddingRecord,

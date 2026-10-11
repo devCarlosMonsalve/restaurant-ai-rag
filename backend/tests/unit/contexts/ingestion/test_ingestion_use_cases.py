@@ -3,7 +3,6 @@ from uuid import UUID
 
 import pytest
 
-from app.domain.osm_place import osm_searchable_metadata_changed
 from app.ingestion.application.documents_usecase import ingest_text_document
 from app.ingestion.application.images_usecase import ingest_image
 from app.ingestion.application.osm import upsert_osm_place as upsert_osm_place_usecase
@@ -12,6 +11,9 @@ from app.ingestion.application.ports import (
     ImageEmbeddingRecord,
     ImageSourceMetadata,
     OSMPlaceRecord,
+)
+from app.restaurant_discovery.domain.osm_place import (
+    osm_searchable_metadata_changed,
 )
 
 

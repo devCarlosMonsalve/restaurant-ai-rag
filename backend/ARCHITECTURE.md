@@ -11,7 +11,8 @@ bounded contexts.
 | Restaurant Discovery | Searches OSM places and indexed restaurant imagery; applies supported feature evidence, freshness, corpus, and photo-association rules. | Supplies ranked candidates and evidence to Tools, Agents, workflows, and HTTP. |
 | Knowledge | Prepares and retrieves indexed documents and generates answers grounded in retrieved excerpts. | Receives document chunks from ingestion; uses PostgreSQL retrieval and a Gemini generation adapter. |
 | Ingestion | Coordinates text, image, and OSM indexing flows while retaining their existing transaction and provenance behavior. | Writes to the Knowledge or Restaurant Discovery stores; filesystem, embeddings, OSM, and Commons remain technical adapters. |
-| Agent orchestration | Runs model/tool cycles and the restaurant-photo workflow. | Calls application use cases through the Tool registry; does not own restaurant evidence or retrieval rules. |
+| Agent orchestration | Runs the Restaurant Search Agent's model/tool cycle. | Normal model-selected calls go through the Tool registry. Candidate-scoped photo search also calls the Discovery application service directly; the Agent does not reimplement association policy. |
+| Photo workflow | Runs the LangGraph candidate/photo sequence. | Calls Discovery application behavior and constructs the PostgreSQL adapter in its graph nodes. |
 | Itinerary dining planning | Produces the current ranked-candidate draft for requested days. | Consumes restaurant discovery over the A2A boundary; it does not promise route feasibility, opening hours, availability, or reservations. |
 | Shared infrastructure | SQLAlchemy sessions/ORM, PostgreSQL/pgvector, Gemini and CLIP embeddings, LiteLLM routing, tracing, and external-data clients. | Technical capabilities shared by contexts; not a domain or shared domain model. |
 | Delivery interfaces | FastAPI, Tools, MCP, A2A, and CLI entry points. | Validate/translate public contracts and compose application dependencies. |
@@ -19,12 +20,339 @@ bounded contexts.
 The main context relationships are:
 
 - Ingestion writes data consumed by Knowledge and Restaurant Discovery.
-- Agents and workflows consume application capabilities; they do not duplicate
-  search, evidence, or attribution policies.
+- Agents and workflows reuse application capabilities rather than duplicating
+  search, evidence, or attribution policies. The Agent and photo Workflow
+  currently construct PostgreSQL adapters in orchestration code; see the flow
+  notes below.
 - Itinerary planning consumes Restaurant Discovery through the existing A2A
   protocol adapter.
 - FastAPI, Tools, MCP, and A2A expose capabilities while preserving their
   current public schemas and artifact names.
+
+## Runtime architecture and module responsibilities
+
+The project is a modular monolith: functional contexts own their contracts and
+policies, while delivery protocols and technical providers remain transversal.
+The diagram shows the implemented dependency paths, including the two places
+where Agent/Workflow orchestration currently constructs a PostgreSQL adapter.
+
+```mermaid
+flowchart LR
+  callers[Users and external clients]
+  http[FastAPI<br/>app.main]
+  mcp[MCP stdio<br/>interfaces.mcp]
+  plannerInterface[Itinerary Planner A2A server]
+  discoveryInterface[Restaurant Discovery A2A server]
+  providerAdapter[A2ARestaurantEvidenceProvider]
+  tools[Tool registry<br/>app.tools]
+  agent[Restaurant Search Agent<br/>LangGraph]
+  workflow[Restaurant Photo Workflow<br/>LangGraph]
+  discovery[Restaurant Discovery<br/>domain + application]
+  knowledge[Knowledge / RAG<br/>domain + application]
+  planning[Itinerary Planning<br/>application]
+  evidencePort[RestaurantEvidenceProvider port]
+  ingestion[Ingestion<br/>application + composition]
+  postgres[PostgreSQL + pgvector<br/>ORM and query adapters]
+  providers[Gemini embeddings / generation<br/>OpenCLIP image embeddings]
+  external[Overpass + Wikimedia Commons]
+
+  callers --> http
+  callers --> mcp
+  callers --> plannerInterface
+  callers --> discoveryInterface
+  callers --> cli[CLI scripts]
+  http --> discovery
+  http --> knowledge
+  http --> agent
+  http --> workflow
+  mcp --> tools
+  agent --> models[LiteLLM / Gemini model calls]
+  agent --> tools
+  tools --> discovery
+  tools --> knowledge
+  workflow --> discovery
+  workflow -. adapter constructed in graph .-> postgres
+  agent -. candidate-photo adapter .-> postgres
+  plannerInterface --> planning
+  planning --> evidencePort
+  providerAdapter -. implements .-> evidencePort
+  providerAdapter --> discoveryInterface
+  discoveryInterface --> agent
+  ingestion --> external
+  ingestion --> postgres
+  discovery --> postgres
+  knowledge --> postgres
+  ingestion --> providers
+  discovery --> providers
+  knowledge --> providers
+  cli --> ingestion
+```
+
+| Module | Responsibility observed in code |
+| --- | --- |
+| `restaurant_discovery/domain` | Evidence requirements, query intent, OSM feature labels, photo identity, and search-embedding freshness policies. |
+| `restaurant_discovery/application` | Discovery operations and the `RestaurantDiscoveryPort` contract; does not issue SQL. |
+| `knowledge/domain` and `knowledge/application` | Text preparation policy, document-search/RAG contracts, retrieval coordination, and grounded-answer orchestration. |
+| `itinerary_planning/application` | Validates requests and builds a deterministic dining draft from evidence supplied through `RestaurantEvidenceProvider`. |
+| `ingestion/application` | Coordinates document, image, and OSM updates through typed ports. `ingestion/composition.py` connects providers and stores. |
+| `application` | Cross-context use cases: document answers with optional photos and the restaurant catalog. `ports.py` and `restaurant_discovery.py` are compatibility exports retained by tests. |
+| `infrastructure` and `models` | SQLAlchemy/pgvector queries and persistence, Gemini and OpenCLIP adapters, filesystem and external-data clients, model routing, configuration, and ORM records. |
+| `interfaces` | HTTP, MCP, and A2A request/response translation and process composition. |
+| `tools` | Model-facing, validated capabilities. The registry dispatches to the existing Discovery and Knowledge operations. |
+| `agents` and `workflows` | LangGraph orchestration. The Agent uses Tools for regular model-selected calls; the photo workflow invokes Discovery use cases directly. |
+
+### Implemented process flows
+
+The diagrams describe code paths, not a claim that every provider or database
+operation was exercised live. The recent real-process A2A check and its
+observability limitation are recorded in the [README](./README.md).
+
+#### 1. Restaurant search
+
+```mermaid
+flowchart TD
+  caller[HTTP client] --> route[POST /restaurants/osm/search<br/>main.search_osm_restaurants]
+  route --> service[restaurant_discovery.application.service.search_restaurants]
+  route --> adapter[PostgresRestaurantDiscoveryAdapter]
+  service --> adapter
+  adapter --> query[infrastructure.persistence.postgres.restaurant_queries.search_osm_places_by_text]
+  query --> embedding[embed_search_query<br/>Gemini text embeddings]
+  query --> evidence[domain.evidence.detect_search_evidence]
+  query --> db[(PostgreSQL / pgvector)]
+  evidence --> requirements{Feature requirements present?}
+  requirements -->|yes| sqlFilter[Apply SQL feature predicate]
+  requirements -->|no| topK[Apply top-k limit]
+  sqlFilter --> db
+  topK --> db
+  db --> verify[Apply matches_feature_requirements<br/>and build ranked DTOs]
+  verify --> response[OsmRestaurantSearchResponse]
+  response --> route
+  route --> caller
+```
+
+`main.search_osm_restaurants` supplies the database-backed adapter. The query
+adapter obtains a Gemini query embedding, applies supported feature and exact
+filter predicates, orders candidates by pgvector distance, and returns the
+Discovery response contract. The Tool and MCP entrypoints reuse the same
+application service through their adapters.
+
+#### 2. Restaurant search through the Agent and Tools
+
+```mermaid
+flowchart TD
+  caller[HTTP /agents/restaurant-search<br/>or A2A Discovery task] --> agent[run_restaurant_search_agent]
+  agent --> graph[LangGraph model/tool cycle]
+  graph --> model[LiteLLM router<br/>configured chat model]
+  model --> decision{Model returned Tool calls?}
+  decision -->|no| final[Build RestaurantSearchAgentResponse]
+  decision -->|yes| dispatch[tools.registry.dispatch_tool_call]
+  dispatch --> validate[Validate Tool name and input schema]
+  validate --> handler[Tool adapter]
+  handler --> usecase[Discovery or Knowledge application operation]
+  usecase --> persistence[PostgreSQL adapter and query]
+  persistence --> database[(PostgreSQL / pgvector)]
+  database --> result[Serialized Tool result]
+  result --> graph
+  graph -->|continue until answer or turn limit| model
+  graph -. when candidate photos are requested .-> scoped[_search_candidate_photo_tool]
+  scoped --> association[search_verified_candidate_photos]
+  association --> directAdapter[PostgresRestaurantDiscoveryAdapter]
+  directAdapter --> database
+  association --> result
+  final --> caller
+```
+
+The A2A Discovery server adapts a text message into the same Agent call and
+wraps its result as the `restaurant_discovery_result` JSON artifact. Regular
+Tool calls go through the registry; candidate-scoped photo handling is a
+separate Agent path, but delegates association and search behavior to the
+Discovery application service.
+
+#### 3. Document retrieval and RAG answer generation
+
+```mermaid
+flowchart TD
+  caller[HTTP /documents/ask<br/>or answer_from_documents Tool] --> composition[main.ask_documents<br/>or Tool adapter]
+  composition --> usecase[application.document_answer.answer_from_documents_with_photos]
+  usecase --> answer[knowledge.application.answer_question.answer_from_documents]
+  answer --> retrieve[knowledge.application.search_documents<br/>or DocumentRetriever port]
+  retrieve --> pg[PostgresDocumentRetriever.search_documents]
+  pg --> embed[embed_search_query<br/>Gemini text embeddings]
+  pg --> chunks[(document_chunks in PostgreSQL / pgvector)]
+  chunks --> found{Chunks found?}
+  found -->|no| empty[Return fixed no-documents answer<br/>without generation]
+  found -->|yes| context[Build source-labelled excerpt context]
+  context --> chain[LangChain prompt / Runnable / StrOutputParser]
+  chain --> gemini[Gemini grounded-answer adapter]
+  gemini --> cited[Answer plus source chunk references]
+  empty --> photos{HTTP include_photos?}
+  cited --> photos
+  photos -->|yes| imageSearch[Discovery photo search<br/>OSM-linked only]
+  photos -->|no| response[RagAnswerWithPhotosResponse]
+  imageSearch --> response
+  response --> caller
+```
+
+The MCP `answer_from_documents` Tool uses the same Knowledge answer use case
+without the HTTP-only optional photo composition. Retrieved chunks are the
+generation context; when no chunks are found, the application returns its
+fixed no-documents answer. HTTP may separately request indexed OSM-linked
+photos for the question.
+
+#### 4. Candidate-scoped photo Workflow
+
+```mermaid
+flowchart TD
+  caller[HTTP /workflows/restaurant-photo-search] --> run[run_restaurant_photo_workflow]
+  run --> graph[LangGraph StateGraph]
+  graph --> candidates[search_candidates]
+  candidates --> service[Discovery search_restaurants]
+  service --> adapter[PostgresRestaurantDiscoveryAdapter]
+  adapter --> db[(PostgreSQL / pgvector)]
+  db --> branch{Candidates returned?}
+  branch -->|no| compose[compose_response]
+  branch -->|yes| photos[search_photos_for_candidates]
+  photos --> verified[Discovery search_verified_candidate_photos]
+  verified --> each[For each bounded candidate:<br/>candidate-scoped photo search]
+  each --> imageAdapter[PostgresRestaurantDiscoveryAdapter]
+  imageAdapter --> imageQuery[search_images_by_text<br/>CLIP text embedding + PostgreSQL]
+  imageQuery --> association[Require exact non-empty OSM source URL match<br/>deduplicate photo sources]
+  association --> compose
+  compose --> response[RestaurantPhotoWorkflowResponse]
+  response --> caller
+```
+
+The graph skips photo retrieval when candidate search returns no candidates.
+For matches, `search_verified_candidate_photos` scopes the lookup to each OSM
+place and applies the domain source-URL association rule before
+`compose_response` groups photos with candidates. Adapter construction
+currently occurs in the Workflow nodes.
+
+#### 5. Ingestion and indexing
+
+```mermaid
+flowchart TD
+  subgraph text[Text documents]
+    textCli[scripts.ingestion.ingest_document] --> textComposition[ingest_txt_to_database]
+    textComposition --> textUsecase[ingest_text_document]
+    textUsecase --> reader[ingest_txt<br/>clean_text + chunk_text]
+    textUsecase --> textEmbed[embed_document_chunks<br/>Gemini, 768 dimensions]
+    reader --> textStore[PostgresDocumentChunkStore.save_all]
+    textEmbed --> textStore
+    textStore --> docDb[(document_chunks)]
+  end
+  subgraph images[Local images]
+    imageCli[scripts.ingestion.ingest_images] --> imageUsecase[ingest_image]
+    imageUsecase --> clip[embed_image<br/>OpenCLIP ViT-B-32, 512 dimensions]
+    imageUsecase --> imageStore[PostgresImageEmbeddingStore.upsert]
+    clip --> imageStore
+    imageStore --> imageDb[(image_embeddings)]
+  end
+  subgraph osm[OSM places and Commons photos]
+    osmCli[scripts.ingestion.ingest_madrid_commons_images] --> overpass[fetch_madrid_restaurants<br/>Overpass]
+    overpass --> upsert[upsert_osm_place<br/>OSMPlaceRecord]
+    upsert --> osmStore[PostgresOSMPlaceStore.upsert]
+    osmStore --> osmDb[(osm_places)]
+    upsert --> reference{Commons Category/File reference?}
+    reference -->|no| next[Continue to next place]
+    reference -->|yes| commons[fetch_commons_photos]
+    commons --> license{Supported media and license?}
+    license -->|no| next
+    license -->|yes| download[Download and validate image]
+    download --> imageUsecase
+  end
+  subgraph placeVectors[OSM semantic vectors]
+    vectorCli[scripts.ingestion.ingest_osm_place_embeddings] --> missing[Select places with missing embedding]
+    missing --> embedPlaces[embed_document_chunks<br/>Gemini, 768 dimensions]
+    embedPlaces --> update[(Update osm_places.embedding)]
+  end
+```
+
+`ingest_document` chunks and embeds text before the PostgreSQL store persists
+records. `ingest_images` embeds local images with CLIP. The Madrid importer
+fetches OSM data and only looks up Commons photos when the OSM record supplies
+a supported `Category:` or `File:` reference; accepted images retain source,
+license, attribution, and place association. OSM place vectors are populated
+by the separate resumable `ingest_osm_place_embeddings` command.
+
+#### 6. A2A delegation between Discovery and Itinerary Planning
+
+```mermaid
+sequenceDiagram
+  participant Client as External A2A client
+  participant Planner as Itinerary Planner :8002
+  participant PlanApp as plan_itinerary_dining
+  participant Provider as A2ARestaurantEvidenceProvider
+  participant Discovery as Restaurant Discovery :8001
+  participant Agent as Restaurant Search Agent
+  participant Store as PostgreSQL / pgvector
+
+  Client->>Planner: Discover Agent Card; send JSON query + day_count
+  Planner->>PlanApp: Validate request and invoke
+  PlanApp->>Provider: search_restaurants(query)
+  Provider->>Discovery: Discover Agent Card; send text task via JSON-RPC
+  Discovery->>Agent: Validate task and run existing Agent
+  Agent->>Store: Tool-backed retrieval (Gemini embeddings and SQL)
+  Store-->>Agent: Ranked candidate evidence
+  Agent-->>Discovery: RestaurantSearchAgentResponse
+  Discovery-->>Provider: restaurant_discovery_result JSON artifact
+  Provider->>Provider: Validate artifact; map to RestaurantSearchEvidence
+  Provider-->>PlanApp: Return structured restaurant evidence
+  PlanApp->>PlanApp: Build days, alternatives, and unfilled count
+  PlanApp-->>Planner: ItineraryDiningDraft
+  Planner-->>Client: itinerary_dining_draft JSON artifact
+```
+
+This service-to-service path is distinct from direct HTTP, MCP, and Agent Tool
+calls. Itinerary Planning depends on its evidence-provider port; the A2A
+adapter implements it and is injected when the Planner server is composed.
+
+## How to read the boundaries
+
+- **Domain** holds pure rules: Discovery owns search-evidence and photo
+  association policies; Knowledge owns text preparation. The shared
+  `app/domain` root was removed because its Discovery re-export modules had no
+  repository callers, and its remaining OSM embedding invalidation rule belongs
+  to Discovery.
+- **Application** coordinates use cases and declares the capabilities they
+  need. Context modules own their own ports; `app/application` remains for the
+  cross-context document-answer/photo flow and restaurant catalog. Its old
+  Discovery exports remain because tests explicitly protect those import paths.
+- **Infrastructure** implements persistence and external-provider behavior.
+  ORM models are storage records, not domain aggregates. PostgreSQL/pgvector
+  query builders and ranking remain infrastructure concerns.
+- **Interfaces** adapt HTTP, MCP, and A2A messages and compose runtime
+  dependencies. They are separate delivery mechanisms; MCP and HTTP do not
+  need A2A to call local capabilities.
+- **Tool** is a validated, model-callable capability dispatched by
+  `app.tools.registry`; it is not an autonomous agent. The **Agent** runs a
+  model/tool cycle and returns a structured response. The **Workflow** runs a
+  state graph with explicit candidate-search, photo-search, and response
+  composition steps. Both reuse Discovery policies rather than reimplementing
+  them.
+- **A2A** is used when the separately hosted Itinerary Planner delegates
+  restaurant discovery to the separately hosted Discovery Agent. Direct
+  endpoint, Tool, MCP, and Workflow use cases remain in-process.
+
+One coupling is real but does not duplicate a business rule: the Agent's
+candidate-scoped photo path and the photo Workflow construct
+`PostgresRestaurantDiscoveryAdapter` in orchestration code. If persistence
+substitution or isolated Agent/Workflow execution becomes a concrete need,
+adapter construction could move to their composition entrypoints; the current
+code instead keeps the existing application service and association rule.
+
+## Verification boundaries
+
+- The code and tests establish the in-memory A2A protocol path. The README
+  records a separate live-process A2A request; that check confirmed the task
+  response, but Phoenix export to `127.0.0.1:6006` failed because no collector
+  was listening.
+- The diagrams show implemented provider calls. They do not claim that
+  Overpass, Wikimedia Commons, Gemini, CLIP model downloads, PostgreSQL
+  integration tests, or all runtime combinations were exercised during this
+  documentation and consolidation task.
+- Architecture tests statically inspect imports and selected composition
+  boundaries; static checks cannot prove the absence of dynamic imports.
 
 ## Tactical DDD decisions
 
@@ -123,10 +451,9 @@ name when it owns that use case; it does not imply that another implementation
 should be added if the behavior already exists.
 
 The tests under `tests/architecture/` protect the dependency-free domains in
-Restaurant Discovery, Knowledge, and the remaining shared domain package,
-statically check the `app.*` import graph for cycles, and prevent `main.py`
-from importing ORM models or SQL query builders. Static checks do not detect
-dynamic imports.
+Restaurant Discovery and Knowledge, statically check the `app.*` import graph
+for cycles, and prevent `main.py` from importing ORM models or SQL query
+builders. Static checks do not detect dynamic imports.
 
 ## Current backend tree
 
@@ -193,15 +520,15 @@ business invariant currently exists.
 
 | Package files | Responsibility / decision |
 | --- | --- |
-| `app/domain/__init__.py`, `app/domain/osm_place.py` | Keep `osm_place.py` as the pure OSM embedding invalidation policy. `domain/restaurant_discovery/*` and `app/application/{ports.py,restaurant_discovery.py}` are compatibility re-exports to the canonical context modules. |
+| `app/restaurant_discovery/domain/osm_place.py` | The pure policy for deciding whether searchable place metadata changed lives with the Discovery context whose embedding it invalidates. The unreferenced global `app/domain/restaurant_discovery` re-export package was removed; `app/application/{ports.py,restaurant_discovery.py}` remain compatibility exports covered by tests. |
 | `app/application/{__init__.py,document_answer.py,restaurant_catalog.py}` | Keep cross-context answer composition and catalog application contracts/use cases; ORM access remains in PostgreSQL adapters. |
-| `app/restaurant_discovery/{domain/{evidence.py,osm_features.py,photo_association.py,query_intent.py},application/{contracts.py,coverage_audit.py,ports.py,service.py},infrastructure/postgres.py}` | Canonical Restaurant Discovery context: pure evidence, OSM feature labels, and identity rules; application orchestration and coverage reporting; and a PostgreSQL adapter. Validate use cases, ingestion, Tools, Agent, workflow, query, and API regressions. |
+| `app/restaurant_discovery/{domain/{evidence.py,osm_features.py,osm_place.py,photo_association.py,query_intent.py},application/{contracts.py,coverage_audit.py,ports.py,service.py},infrastructure/postgres.py}` | Canonical Restaurant Discovery context: pure evidence, OSM feature labels, searchable-metadata invalidation, and identity rules; application orchestration and coverage reporting; and a PostgreSQL adapter. Validate use cases, ingestion, Tools, Agent, workflow, query, and API regressions. |
 | `app/infrastructure/{embeddings,external_data,filesystem,llm,persistence/postgres,observability.py}` | Keep technical providers and adapters out of the `app/` package root. SQL/pgvector retrieval and query semantics are unchanged; validate adapter and embedding tests plus the opt-in PostgreSQL suite. |
 | `app/knowledge/{__init__.py,domain/__init__.py,domain/text.py,application/__init__.py,application/contracts.py,application/ports.py,application/answer_question.py,application/search_documents.py,infrastructure/__init__.py,infrastructure/postgres/__init__.py,infrastructure/postgres/retriever.py,infrastructure/generation/__init__.py,infrastructure/generation/answer_chain.py}` | Keep the context-first structure; it owns document-search/RAG contracts and separates text policy, retrieval/answer use cases, database retrieval, and Gemini/LangChain generation. Validate with RAG/retrieval tests using mocks. |
-| `app/ingestion/{__init__.py,composition.py,application/{__init__.py,ports.py,documents_usecase.py,images_usecase.py}}` | Keep; application use cases depend on ports, while composition wires filesystem/embedding providers and PostgreSQL adapters. `application/{documents.py,images.py,osm.py}` remain thin temporary compatibility facades. Validate with use-case, transaction, ingestion, and compatibility tests. |
+| `app/ingestion/{__init__.py,composition.py,application/{__init__.py,ports.py,documents_usecase.py,images_usecase.py,osm.py}}` | Keep; application use cases depend on ports, while composition translates provider DTOs and wires filesystem/embedding providers and PostgreSQL adapters. `application/{documents.py,images.py}` remain compatibility facades; `application/osm.py` is the OSM upsert use case. Validate with use-case, transaction, ingestion, and compatibility tests. |
 | `app/models/{__init__.py,base.py,restaurant.py,osm_place.py,image_embedding.py,document_chunk.py}` | Keep as ORM persistence records. `alembic/env.py` imports `app.models` so all tables remain registered. Validate metadata imports and Alembic history. |
-| `app/agents/{__init__.py,schemas.py,restaurant_search_agent.py}` | Keep public Agent schemas unchanged. `restaurant_search_agent.py` remains the LangGraph/model/tool orchestration boundary and calls the Discovery context for policies and use cases; turn/tool limits and photo dispatch remain contract-sensitive graph concerns. |
-| `app/workflows/{__init__.py,schemas.py,restaurant_photo_search.py}` | Keep workflow DTOs and graph boundary. The photo workflow coordinates discovery and scoped image lookup; exact source-URL association remains a domain policy. Do not merge it into an aggregate. |
+| `app/agents/{__init__.py,schemas.py,restaurant_search_agent.py}` | Keep public Agent schemas unchanged. `restaurant_search_agent.py` remains the LangGraph/model/tool orchestration boundary; registry Tool calls use existing application operations, while candidate-scoped photo search calls the Discovery application service directly and constructs its PostgreSQL adapter in the Agent path. |
+| `app/workflows/{__init__.py,schemas.py,restaurant_photo_search.py}` | Keep workflow DTOs and graph boundary. The photo workflow coordinates Discovery application operations and scoped image lookup; it constructs the PostgreSQL adapter in graph nodes and reuses the exact source-URL domain policy. |
 | `app/tools/{__init__.py,registry.py,restaurant_search.py,restaurant_photos.py,document_search.py,document_answer.py}` | Keep the registry and thin adapters. MCP and the model Agent share names, input schemas, hidden arguments, result serialization, and stable error categories. |
 | `app/interfaces/{http,mcp,a2a}` | Group protocol-specific schemas, servers, and clients by delivery mechanism. Keep endpoint paths, MCP tool schemas, A2A agent cards, artifacts, and task behavior unchanged. |
 | `app/itinerary_planning/{application,infrastructure/a2a}` | Keep the deterministic itinerary-draft use case separate from the A2A client adapter. It remains a small application capability, not an artificial domain aggregate. |
@@ -209,13 +536,13 @@ business invariant currently exists.
 | `app/main.py` | Keep the stable ASGI entry point and explicit FastAPI composition. Launch remains `uvicorn app.main:app`; no public route or response contract changes. |
 | `app/schemas.py` | Keep temporarily as a compatibility re-export; canonical aggregation is in `app/interfaces/http/schemas.py`, while application DTO definitions live with their application services. |
 
-Ingestion document/image use cases depend on typed application ports, while
-the composition module wires filesystem/embedding providers and PostgreSQL
-adapters. The OSM import path remains a compatibility boundary around an
-infrastructure upsert; its searchable-metadata invalidation policy is pure
-domain logic. Provider DTOs and shared schema contracts remain candidates for
-later context ownership, but must not be moved without preserving CLI and
-external integrations.
+Ingestion document/image/OSM use cases depend on typed application ports, while
+the composition module wires filesystem, embedding, external-data, and
+PostgreSQL adapters. Its OSM composition translates the Overpass DTO into an
+application `OSMPlaceRecord`; persistence applies the Discovery-owned
+searchable-metadata invalidation policy. Provider DTOs and shared schema
+contracts remain at their current integration boundaries; changing those
+contracts would require preserving CLI and external integrations.
 
 ## `backend/app/` root module decisions
 

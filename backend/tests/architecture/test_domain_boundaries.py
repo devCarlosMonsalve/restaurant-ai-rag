@@ -5,12 +5,10 @@ import sys
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 DOMAIN_DIRS = [
-    APP_DIR / "domain",
     APP_DIR / "restaurant_discovery" / "domain",
     APP_DIR / "knowledge" / "domain",
 ]
 DOMAIN_IMPORT_ROOTS = (
-    "app.domain",
     "app.knowledge.domain",
     "app.restaurant_discovery.domain",
 )

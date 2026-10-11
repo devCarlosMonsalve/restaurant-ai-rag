@@ -1,3 +1,5 @@
+"""Rules for detecting stale Restaurant Discovery place embeddings."""
+
 from collections.abc import Sequence
 
 

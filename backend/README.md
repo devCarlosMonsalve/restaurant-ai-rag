@@ -831,3 +831,17 @@ with synthetic candidates:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\contracts\a2a\test_itinerary_planner_agent_client.py
 ```
+
+### Verification record (2026-10-11)
+
+The A2A contract suite was previously run with
+`.\.venv\Scripts\python.exe -m pytest tests\contracts\a2a -q`: 20 tests passed.
+These automated tests use in-memory transports and synthetic results; they do
+not replace a live inter-process check.
+
+In a separate live check, both independently started Agent Cards returned
+HTTP 200. A request to the Itinerary Planner delegated to Restaurant Discovery
+and returned a three-day draft with 9 alternatives and no unfilled days. During
+that request, Phoenix export attempts to `127.0.0.1:6006` failed because no
+collector was listening. This did not prevent the A2A response, but successful
+Phoenix trace export was not verified.
