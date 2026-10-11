@@ -16,6 +16,9 @@ env/
 # Local course materials
 docs/
 
+# Local study guide
+/backend/LEARNING_GUIDE.md
+
 # IDE
 .vscode/
 .idea/
