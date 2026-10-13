@@ -961,3 +961,15 @@ providers:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\unit\contexts\discovery\test_review_recommendation_agent.py tests\unit\contexts\discovery\test_restaurant_search_agent.py tests\contracts\a2a\test_review_recommendation_a2a.py
 ```
+
+The process-level A2A test is marked `integration` and excluded from the
+default test suite. It starts the Review Agent on port 8003 in a subprocess,
+drives the real Restaurant Search Agent graph with synthetic model and search
+results, and uses a deterministic Review Agent executor. It exercises the A2A
+Agent Card, client, JSON-RPC task, and `review_recommendation_result` artifact
+over loopback without connecting to PostgreSQL or contacting a model provider.
+Port 8003 must be free:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\a2a\test_review_recommendation_process.py -m integration -q
+```

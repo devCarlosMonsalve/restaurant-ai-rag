@@ -201,6 +201,27 @@ def test_a2a_client_converts_http_timeout_to_delegation_error() -> None:
         )
 
 
+def test_a2a_client_converts_connection_error_to_delegation_error() -> None:
+    class ConnectionErrorTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(
+            self,
+            request: httpx.Request,
+        ) -> httpx.Response:
+            raise httpx.ConnectError("connection refused", request=request)
+
+    with pytest.raises(
+        ReviewRecommendationDelegationError,
+        match="Could not communicate",
+    ):
+        asyncio.run(
+            delegate_review_recommendation(
+                make_request(),
+                agent_url="http://review-agent.invalid",
+                transport=ConnectionErrorTransport(),
+            )
+        )
+
+
 def test_a2a_client_rejects_malformed_json_artifact() -> None:
     payload = Struct()
     ParseDict({"comparisons": "not-a-list"}, payload)
