@@ -2,14 +2,30 @@
 
 A modular restaurant-discovery application and AI Engineering learning project. It combines a FastAPI backend, a Next.js chat interface, PostgreSQL with pgvector, model-backed retrieval and generation, and separate MCP and A2A integration points.
 
+[Overview](#what-it-does) · [Architecture](#architecture-at-a-glance) · [Run locally](#run-locally) · [Services](#local-services) · [Checks](#checks)
+
+## Project at a glance
+
+| Area | Technology or responsibility |
+| --- | --- |
+| API and agent orchestration | Python, FastAPI, LangGraph, LiteLLM |
+| Web interface | Next.js, React, TypeScript |
+| Retrieval and persistence | PostgreSQL, pgvector, Gemini embeddings |
+| Image search | OpenCLIP |
+| Interoperability | MCP over `stdio`; A2A over local HTTP/JSON-RPC |
+
 ## What it does
 
 - Searches restaurant records and OSM restaurant metadata.
 - Retrieves indexed documents and can generate answers grounded in retrieved passages.
 - Searches indexed restaurant photos with OpenCLIP; photo attribution and restaurant association are preserved.
 - Exposes restaurant and document capabilities through backend endpoints, an Agent with Tools, and a local MCP server.
-- Supports A2A delegation from the Itinerary Planner Agent to the Restaurant Discovery Agent.
+- Supports A2A delegation from the Itinerary Planner Agent to Restaurant Discovery and explicit restaurant comparisons from Restaurant Search to the Review & Recommendation Agent.
+- Compares candidates against stated preferences using supplied OSM fields; indexed documents are not reliably associated with restaurants as reviews.
 - Includes scripts for importing restaurant data, documents, and images.
+
+> [!NOTE]
+> Provider-backed requests depend on locally configured data and credentials. Similarity is a retrieval signal, not a confidence score; the Review Agent does not claim that the current document corpus contains restaurant-linked reviews.
 
 Search results and indexed data depend on the configured database and the imports performed locally. Model-backed requests require provider configuration and may incur provider charges.
 
@@ -23,6 +39,8 @@ flowchart LR
     API --> Agent["Restaurant Search Agent"]
     Agent --> Tools["Registered Tools"]
     Tools --> Discovery["Restaurant Discovery"]
+    Agent -->|"A2A for explicit comparisons"| Review["Review & Recommendation A2A server"]
+    Review -->|"search_documents operation"| Knowledge
     API --> Knowledge["Knowledge / RAG"]
     Discovery --> DB["PostgreSQL + pgvector"]
     Knowledge --> DB
@@ -66,6 +84,18 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
 The API listens on `http://127.0.0.1:8000`; interactive API documentation is at [`/docs`](http://127.0.0.1:8000/docs). See the [backend README](backend/README.md) for configuration, ingestion, tests, MCP, A2A, and feature-specific instructions.
 
+For explicit comparison requests, start the Review & Recommendation A2A
+service in another terminal from `backend`:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.interfaces.a2a.review_recommendation_server
+```
+
+It listens at `http://127.0.0.1:8003`. The main API calls it through
+`REVIEW_RECOMMENDATION_AGENT_URL`, which defaults to that address. Real
+provider-backed requests also require the database and model configuration
+described in the backend guide.
+
 ### 3. Start the frontend
 
 In a separate terminal, from `frontend`:
@@ -87,6 +117,7 @@ Open `http://localhost:3000`. The frontend defaults to the backend at `http://12
 | PostgreSQL | `localhost:5432` | PostgreSQL 16 with pgvector; started through Docker Compose. |
 | Restaurant Discovery A2A | `http://127.0.0.1:8001` | Optional standalone local agent server. |
 | Itinerary Planner A2A | `http://127.0.0.1:8002` | Optional; delegates to Restaurant Discovery. |
+| Review & Recommendation A2A | `http://127.0.0.1:8003` | Optional; called by Restaurant Search for explicit comparisons. |
 | Phoenix | `http://127.0.0.1:6006` | Optional local tracing collector; see the infrastructure and backend guides. |
 
 The MCP server uses local `stdio` transport and does not listen on an HTTP port. The A2A servers are intended for local development and are not configured for public deployment.
@@ -121,5 +152,6 @@ The frontend package does not define a separate test script. Some backend evalua
 
 - [Backend setup and feature guide](backend/README.md)
 - [Backend architecture and process diagrams](backend/ARCHITECTURE.md)
+- [Backend integration test setup](backend/tests/integration/README.md)
 - [Frontend development guide](frontend/README.md)
 - [Docker infrastructure guide](infrastructure/docker/README.md)

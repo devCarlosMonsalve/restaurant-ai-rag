@@ -4,6 +4,17 @@ The web interface for Restaurant AI RAG, built with Next.js, React, and
 TypeScript. It provides a restaurant-search chat backed by the FastAPI
 `POST /agents/restaurant-search` endpoint.
 
+[Overview](#features) · [Requirements](#requirements) · [Run locally](#run-locally) · [Project structure](#project-structure) · [Quality checks](#quality-checks)
+
+## At a glance
+
+| | |
+| --- | --- |
+| Development URL | `http://localhost:3000` |
+| Backend proxy target | `BACKEND_API_URL` (defaults to `http://127.0.0.1:8000`) |
+| Conversation state | In-memory for the current page; not persisted |
+| Search transport | Same-origin Next.js route to FastAPI |
+
 ## Features
 
 - assistant-ui chat runtime with in-page conversation state.
@@ -16,6 +27,11 @@ TypeScript. It provides a restaurant-search chat backed by the FastAPI
 Each submitted turn is sent as a standalone search containing only the latest
 user message. The visible conversation is kept in memory for the current page;
 it is not persisted, and earlier turns are not sent to the backend.
+
+For explicit comparison requests, the backend may return an additional
+`review_recommendation` object. The current frontend renders the assistant's
+text, restaurant candidates, and photos; it does not render that structured
+comparison object separately.
 
 ## Requirements
 

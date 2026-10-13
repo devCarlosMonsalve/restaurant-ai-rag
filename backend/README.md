@@ -4,6 +4,16 @@ Restaurant AI RAG's Python service: a FastAPI API and modular application for
 restaurant discovery, document retrieval and RAG, image search, ingestion, and
 local Agent, MCP, and A2A integrations.
 
+## At a glance
+
+| Process | Responsibility | Local address or transport |
+| --- | --- | --- |
+| FastAPI | HTTP endpoints and Restaurant Search Agent | `http://127.0.0.1:8000` |
+| Restaurant Discovery A2A | Exposes the search Agent to A2A clients | `http://127.0.0.1:8001` |
+| Itinerary Planner A2A | Plans dining drafts using Discovery evidence | `http://127.0.0.1:8002` |
+| Review & Recommendation A2A | Compares candidates for explicit requests | `http://127.0.0.1:8003` |
+| MCP server | Exposes the existing four Tools | Local `stdio` |
+
 ## Quick start
 
 PostgreSQL with pgvector is required for database-backed endpoints and ingestion.
@@ -39,6 +49,11 @@ health check and `/docs` for interactive API documentation. Restaurant search,
 document embeddings, and answer generation need the relevant database and
 provider configuration. Provider-backed requests may incur charges.
 
+> [!IMPORTANT]
+> Start the Review & Recommendation A2A process on port 8003 when making an
+> explicit comparison request. It currently compares supplied OSM fields;
+> indexed documents are not reliably linked to restaurant reviews.
+
 ## Guides
 
 - [Architecture, modules, dependencies, and process diagrams](./ARCHITECTURE.md)
@@ -48,6 +63,7 @@ provider configuration. Provider-backed requests may incur charges.
 - [Photo Workflow](#restaurant-photo-workflow)
 - [MCP server](#mcp-server)
 - [A2A servers](#a2a-server)
+- [Integration test setup](./tests/integration/README.md)
 - [Image-search evaluation](#evaluate-image-search)
 - [Document and RAG evaluation](#evaluate-document-retrieval-and-rag-answers)
 

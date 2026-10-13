@@ -2,7 +2,15 @@
 
 This directory contains Docker Compose configurations for local PostgreSQL
 with pgvector, optional Phoenix tracing, and a separate disposable database for
-integration tests.
+database-backed integration tests.
+
+## Services
+
+| Service | Compose configuration | Local address | Persistence |
+| --- | --- | --- | --- |
+| PostgreSQL + pgvector | `docker-compose.yml` | `localhost:${POSTGRES_PORT:-5432}` | Named volume; retained across restarts |
+| Phoenix | `docker-compose.yml` + `docker-compose.phoenix.yml` | `http://127.0.0.1:6006` | Named volume |
+| Integration PostgreSQL | `docker-compose.integration.yml` | `127.0.0.1:55432` | Temporary `tmpfs`; removed with the container |
 
 ## PostgreSQL with pgvector
 
