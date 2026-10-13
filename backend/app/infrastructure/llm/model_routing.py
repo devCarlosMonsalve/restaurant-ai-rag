@@ -75,6 +75,7 @@ def call_restaurant_search_model(
     system_instruction: str,
     *,
     tools_enabled: bool,
+    additional_tool_declarations: Sequence[types.FunctionDeclaration] = (),
 ) -> types.GenerateContentResponse:
     request: dict[str, Any] = {
         "model": RESTAURANT_SEARCH_MODEL_ALIAS,
@@ -84,7 +85,7 @@ def call_restaurant_search_model(
         "stream": False,
     }
     if tools_enabled:
-        request["tools"] = _litellm_tools()
+        request["tools"] = _litellm_tools(additional_tool_declarations)
         request["tool_choice"] = "auto"
 
     try:
@@ -225,9 +226,12 @@ def _to_litellm_messages(
     return messages
 
 
-def _litellm_tools() -> list[dict[str, Any]]:
+def _litellm_tools(
+    additional_tool_declarations: Sequence[types.FunctionDeclaration] = (),
+) -> list[dict[str, Any]]:
     tools: list[dict[str, Any]] = []
-    for declaration in get_function_declarations():
+    declarations = [*get_function_declarations(), *additional_tool_declarations]
+    for declaration in declarations:
         parameters = declaration.parameters_json_schema
         if not isinstance(parameters, dict):
             raise ModelRouteError(

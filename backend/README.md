@@ -383,6 +383,17 @@ removed. Restaurant calls are executed before other Tools in a model turn, but
 their results are returned to Gemini in the original call order. If no photos
 remain associated with the candidates, the answer says so.
 
+For an explicit comparison or recommendation request, the graph conditionally
+exposes an internal `request_review_recommendation` function to the model.
+After `search_restaurants` returns candidates, the Agent sends the query,
+model-extracted preferences, and at most five candidates to the separate Review
+& Recommendation Agent using A2A. The response includes an optional
+`review_recommendation` object; without an explicit comparison request, the
+existing response fields and execution path remain unchanged. A delegation
+failure is surfaced in the answer and does not trigger an ungrounded local
+recommendation. The internal function is not registered as a Tool and is not
+exposed through MCP; MCP continues to expose the same four Tools.
+
 LangGraph's concrete benefit here is an explicit, testable state machine for
 model/tool cycles, forced photo lookup, finalization, and turn-limit handling
 instead of one opaque manual loop. It does not add a new retrieval or ranking
@@ -905,3 +916,48 @@ and returned a three-day draft with 9 alternatives and no unfilled days. During
 that request, Phoenix export attempts to `127.0.0.1:6006` failed because no
 collector was listening. This did not prevent the A2A response, but successful
 Phoenix trace export was not verified.
+
+### Review & Recommendation Agent A2A service
+
+Start the second recommendation Agent from `backend`:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.interfaces.a2a.review_recommendation_server
+```
+
+It listens on loopback at `http://127.0.0.1:8003`, publishes its Agent Card at
+`/.well-known/agent-card.json`, and accepts JSON-RPC tasks containing
+`query`, `preferences`, and `candidates`. The Discovery Agent's outbound A2A
+client uses `REVIEW_RECOMMENDATION_AGENT_URL`, which defaults to
+`http://127.0.0.1:8003`. Start this process when making an explicit comparison
+request through `POST /agents/restaurant-search` or the Discovery A2A server.
+
+The completed task contains a `review_recommendation_result` JSON artifact.
+The calling Agent validates the task, artifact, response schema, candidate
+references, and cited field values before returning the comparison. The
+recommendation uses only supplied OSM candidate fields; similarity is not a
+quality score, and absent fields are not proof that a restaurant lacks a
+feature.
+
+The current `document_chunks` schema stores `source_name`, `chunk_index`,
+`content`, and an embedding, but no document type or restaurant identifier.
+The checked-in evaluation documents are synthetic menu descriptions, not
+restaurant reviews. The Review & Recommendation Agent reuses Knowledge's
+`search_documents` operation, but reports retrieved chunks as unattributed and
+does not use them as candidate-specific evidence. It does not claim to have
+retrieved or compared reviews.
+
+Reliable review recommendations require an ingestion capability that records
+review/source type, a stable restaurant reference (such as the OSM type and
+ID or canonical source URL), source URL, publication/retrieval dates, and
+available author/language provenance. Until such data is ingested and
+associated, the Agent can compare only the supplied indexed candidate fields
+and must report the review-data limitation.
+
+The contract and delegation tests use an in-memory A2A transport and mocked
+model/retrieval results; they do not require PostgreSQL or contact model
+providers:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\contexts\discovery\test_review_recommendation_agent.py tests\unit\contexts\discovery\test_restaurant_search_agent.py tests\contracts\a2a\test_review_recommendation_a2a.py
+```

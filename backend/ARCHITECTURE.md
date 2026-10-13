@@ -143,9 +143,9 @@ flowchart TD
   caller[HTTP /agents/restaurant-search<br/>or A2A Discovery task] --> agent[run_restaurant_search_agent]
   agent --> graph[LangGraph model/tool cycle]
   graph --> model[LiteLLM router<br/>configured chat model]
-  model --> decision{Model returned Tool calls?}
+  model --> decision{Model requested a function?}
   decision -->|no| final[Build RestaurantSearchAgentResponse]
-  decision -->|yes| dispatch[tools.registry.dispatch_tool_call]
+  decision -->|registered Tool| dispatch[tools.registry.dispatch_tool_call]
   dispatch --> validate[Validate Tool name and input schema]
   validate --> handler[Tool adapter]
   handler --> usecase[Discovery or Knowledge application operation]
@@ -159,6 +159,16 @@ flowchart TD
   association --> directAdapter[PostgresRestaurantDiscoveryAdapter]
   directAdapter --> database
   association --> result
+  decision -->|explicit comparison| a2aClient[Review Recommendation A2A client]
+  a2aClient --> reviewServer[Review Recommendation server :8003]
+  reviewServer --> reviewGraph[Review Agent LangGraph]
+  reviewGraph --> documentSearch[Knowledge search_documents operation]
+  documentSearch --> persistence
+  reviewGraph --> reviewModel[Configured LiteLLM model]
+  reviewModel --> reviewGraph
+  reviewGraph --> reviewResult[review_recommendation_result artifact]
+  reviewResult --> a2aClient
+  a2aClient --> graph
   final --> caller
 ```
 
@@ -167,6 +177,24 @@ wraps its result as the `restaurant_discovery_result` JSON artifact. Regular
 Tool calls go through the registry; candidate-scoped photo handling is a
 separate Agent path, but delegates association and search behavior to the
 Discovery application service.
+
+An explicit comparison request is a separate internal function-call path; it
+does not go through `tools.registry` and does not add an MCP Tool. The
+Discovery Agent's A2A client sends the query, extracted preferences, and up to
+five retrieved candidates to the independent Review & Recommendation A2A
+server. Its server validates the request, runs a bounded LangGraph, and
+returns a typed `review_recommendation_result` artifact. The Discovery Agent
+validates the artifact and incorporates the optional comparison into its
+existing response contract.
+
+The Review Agent reuses Knowledge's document-search operation, but the current
+document schema has no reliable restaurant association or review provenance.
+Retrieved chunks therefore remain unattributed and are not treated as
+candidate-specific evidence. The comparison is grounded only in the OSM fields
+passed with each candidate; unavailable fields and unsupported preferences
+remain explicit limitations. Reliable review comparison needs ingestion
+metadata for review/source type, stable restaurant identity, source URL,
+publication or retrieval dates, and available author/language provenance.
 
 #### 3. Document retrieval and RAG answer generation
 

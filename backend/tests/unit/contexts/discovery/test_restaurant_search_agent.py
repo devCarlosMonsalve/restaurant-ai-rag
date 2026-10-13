@@ -9,6 +9,11 @@ from litellm.types.utils import ModelResponse
 from pydantic import SecretStr
 
 from app.agents import restaurant_search_agent
+from app.agents.schemas import (
+    CandidateComparison,
+    CandidateEvidence,
+    ReviewRecommendationResponse,
+)
 from app.core.config import settings
 from app.schemas import (
     ImageSearchResult,
@@ -873,6 +878,11 @@ def test_agent_executes_tool_call_and_returns_model_final_answer(
         tool["function"]["name"] == "search_restaurants"
         for tool in first_request["tools"]
     )
+    assert all(
+        tool["function"]["name"]
+        != restaurant_search_agent.REVIEW_RECOMMENDATION_FUNCTION
+        for tool in first_request["tools"]
+    )
     assert json.loads(
         find_tool_call(final_request, "search_restaurants")["function"]["arguments"]
     ) == {"query": "vegetarian food", "top_k": 3}
@@ -888,6 +898,148 @@ def test_agent_executes_tool_call_and_returns_model_final_answer(
         repr(session) not in repr(request)
         for request in client.requests
     )
+
+
+def test_agent_delegates_explicit_comparison_and_returns_structured_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = configure_client(
+        monkeypatch,
+        function_call_response(
+            "search_restaurants",
+            {"query": "vegetarian restaurants", "top_k": 3},
+        ),
+        function_call_response(
+            restaurant_search_agent.REVIEW_RECOMMENDATION_FUNCTION,
+            {"preferences": ["vegetarian cuisine"]},
+        ),
+        text_response("Casa Verde is the evidenced match for vegetarian cuisine."),
+    )
+    candidate = make_candidate("Casa Verde", 506)
+    expected = ReviewRecommendationResponse(
+        recommended_candidate_source_url=candidate.source_url,
+        comparisons=[
+            CandidateComparison(
+                candidate_source_url=candidate.source_url,
+                assessment="matches",
+                reasons=["The OSM cuisine field matches the preference."],
+                evidence=[
+                    CandidateEvidence(
+                        field="cuisine",
+                        value="vegetarian",
+                        preference="vegetarian cuisine",
+                    )
+                ],
+                unresolved_preferences=[],
+            )
+        ],
+        limitations=["No restaurant-linked review data is available."],
+    )
+    received_requests = []
+
+    async def fake_delegate(request):
+        received_requests.append(request)
+        return expected
+
+    def fake_dispatch(name: str | None, args: Any, _session: Any):
+        assert name == "search_restaurants"
+        return {
+            "output": {
+                "results": [candidate.model_dump(mode="json")],
+                "evidence_status": "not_required",
+                "evidence_message": None,
+            }
+        }
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        fake_dispatch,
+    )
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "delegate_review_recommendation",
+        fake_delegate,
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Compara y recomienda según cocina vegetariana",
+        object(),
+    )
+
+    assert response.review_recommendation == expected
+    assert len(received_requests) == 1
+    assert received_requests[0].query == (
+        "Compara y recomienda según cocina vegetariana"
+    )
+    assert received_requests[0].preferences == ["vegetarian cuisine"]
+    assert received_requests[0].candidates[0].source_url == candidate.source_url
+    assert not hasattr(received_requests[0].candidates[0], "id")
+    first_request, review_request, final_request = client.requests
+    assert any(
+        tool["function"]["name"]
+        == restaurant_search_agent.REVIEW_RECOMMENDATION_FUNCTION
+        for tool in first_request["tools"]
+    )
+    assert find_tool_result(review_request, "search_restaurants")["output"]["results"]
+    assert find_tool_result(
+        final_request,
+        restaurant_search_agent.REVIEW_RECOMMENDATION_FUNCTION,
+    )["output"]["recommended_candidate_source_url"] == candidate.source_url
+
+
+def test_agent_surfaces_recommendation_delegation_failure_without_fallback_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = configure_client(
+        monkeypatch,
+        function_call_response(
+            "search_restaurants",
+            {"query": "restaurants", "top_k": 1},
+        ),
+        function_call_response(
+            restaurant_search_agent.REVIEW_RECOMMENDATION_FUNCTION,
+            {"preferences": ["quiet atmosphere"]},
+        ),
+        text_response("I could not compare the candidates."),
+    )
+    candidate = make_candidate("Example", 507)
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "dispatch_tool_call",
+        lambda *_args: {
+            "output": {
+                "results": [candidate.model_dump(mode="json")],
+                "evidence_status": "not_required",
+                "evidence_message": None,
+            }
+        },
+    )
+
+    async def failed_delegate(_request):
+        raise restaurant_search_agent.ReviewRecommendationDelegationError(
+            "private downstream detail"
+        )
+
+    monkeypatch.setattr(
+        restaurant_search_agent,
+        "delegate_review_recommendation",
+        failed_delegate,
+    )
+
+    response = restaurant_search_agent.run_restaurant_search_agent(
+        "Recommend the best restaurant for a quiet atmosphere",
+        object(),
+    )
+
+    assert response.review_recommendation is None
+    assert "no preference-based recommendation was generated" in response.answer
+    assert "private downstream detail" not in response.answer
+    failed_tool_result = find_tool_result(
+        client.requests[-1],
+        restaurant_search_agent.REVIEW_RECOMMENDATION_FUNCTION,
+    )
+    assert failed_tool_result["error"]["code"] == "review_agent_unavailable"
 
 
 def test_agent_caps_tool_calls_and_asks_for_final_answer_without_tools(
